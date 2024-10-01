@@ -1,3 +1,4 @@
+# Create a GeoDataFrame object from an ArcGIS service feature layer filtered by column names. 
 def gdf_from_services(url, fieldIds = None):
     """Creates a GeoDataFrame from a request to an ArcGIS Services. Automatically queries for maxRecordCount and iterates
     over the whole feature layer to return all features. Optional: Filter the results by including a list of field IDs.
@@ -83,3 +84,56 @@ def gdf_from_services(url, fieldIds = None):
             pb.update(maxRecordCount)
 
     return(gdf)
+
+# Download and unzip a file from a url. 
+def download_and_unzip_archive(url, filename = None, temp_dir = "./temp_data/", keep_zip = False):
+    """Creates a local copy of the contents of a zip archive from a url. 
+
+    Parameters:
+    -------------
+    url | str
+    The url of the directory where the zip file is located.
+
+    filename | str
+    The filename of the zip file ending in ".zip".
+
+    temp_dir | str
+    The location to create and/or to archive the files.
+
+    keep_zip | boolean
+    if True keep the zip file in the temp dir, if False deletes zip file after unarchiving
+
+    """
+    import os
+    import re
+    import requests
+    import zipfile
+    from tqdm import tqdm
+    
+    # Create folder at location designated by temp_dir
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir)
+
+    # URL for location of data
+    if filename == None:
+        r = requests.get(url, stream=True)
+        filename = str(re.findall('\"(.+)\"', r.headers['content-disposition'])[0])
+    else:
+        r = requests.get(os.path.join(url, filename), stream=True)
+
+    # Download copy of zip file from url
+    archive_path = os.path.join(temp_dir, filename)
+    with tqdm(total=int(r.headers.get("Content-Length"))) as pb:
+        with open(archive_path, "wb") as fd:
+            for chunk in r.iter_content(chunk_size=128):
+                fd.write(chunk)
+                pb.update(len(chunk))
+                
+    # Unzip file
+    with zipfile.ZipFile(archive_path) as zip:
+        for zip_info in zip.infolist():
+            zip.extract(zip_info, temp_dir)
+
+    if keep_zip == False:
+        print(f"Removing zip")
+        os.unlink(archive_path) # remove zip file
