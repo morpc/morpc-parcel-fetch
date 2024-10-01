@@ -137,3 +137,92 @@ def download_and_unzip_archive(url, filename = None, temp_dir = "./temp_data/", 
     if keep_zip == False:
         print(f"Removing zip")
         os.unlink(archive_path) # remove zip file
+
+# When looking for the correct columns in cama files it is helpful to list all the files, fields, and a sample some of the field values. 
+def sample_fields_from_zipped_cama(zip_path, filename, sample = 5):
+    """ Creates a Dataframe containing the names of ech field in each file and a sample of unique values from each field up to the declared number of samples. 
+    
+    Use this to help identify with columns from cama files are useful for join to parcel data. 
+
+    Parameters:
+    -----------
+    zip_path | Path like object, or str
+        The location of the zip file.
+
+    filename | str
+        the name of the file to include in the dataframe. 
+        
+    sample | 5 (default): int
+        The number of samples to take from each field. 
+
+    Returns:
+    ---------
+    df | pandas.core.frame.DataFrame
+        A pandas.DataFrame object
+            filename | str 
+                Name of file
+            column_name | str
+                Name of column
+            column_sample | str
+                Samples of columns separated by "; "
+    """
+    import zipfile
+    import xml.etree.ElementTree as ET
+    import pandas as pd
+    import random
+
+    with zipfile.ZipFile(zip_path) as z:
+        for file in z.namelist():
+            if file == filename:
+                file_type = file.split(".")[-1]
+                with z.open(file) as data:
+                    if file_type == "xml":
+                        et = ET.parse(data)
+                        root = et.getroot()
+                        dicts = []
+                        for child in root:
+                            dicts.append(child.attrib)
+                        df = pd.DataFrame(dicts)
+                    if file_type == "csv":
+                        df = read_csv(data, dtype = 'str')
+                    if file_type == "txt":
+                        df = pd.read_csv(data, sep = "|", dtype="str")
+                    if file_type == "xlsx":
+                        df = pd.read_excel(data)
+                    cama_column_df = pd.DataFrame(data = {"filename":file, "column_name":df.columns.tolist()})
+                    cama_column_df['column_sample'] = ""
+                    for column in cama_column_df['column_name']:
+                        uniques = df[column].unique().tolist()
+                        if len(uniques) > 5: 
+                            k = 5 
+                        else: 
+                            k = len(uniques)
+                        sample = "; ".join([str(x) for x in random.sample(uniques, k)])
+                        cama_column_df.loc[cama_column_df['column_name']==column, 'column_sample'] = sample
+    return(cama_column_df)
+
+def extract_fields_from_cama(zip_path, filename, columns):
+    import zipfile
+    import xml.etree.ElementTree as ET
+    import pandas as pd
+    import random
+
+    with zipfile.ZipFile(zip_path) as z:
+        for file in z.namelist():
+            if file == filename:
+                file_type = file.split(".")[-1]
+                with z.open(file) as data:
+                    if file_type == "xml":
+                        et = ET.parse(data)
+                        root = et.getroot()
+                        dicts = []
+                        for child in root:
+                            dicts.append(child.attrib)
+                        df = pd.DataFrame(dicts)[columns]
+                    if file_type == "csv":
+                        df = pd.read_csv(data, dtype = 'str', usecols = columns)
+                    if file_type == "txt":
+                        df = pd.read_csv(data, sep = "|", dtype="str", usecols = columns)
+                    if file_type == "xlsx":
+                        df = pd.read_excel(data, usecols = columns)
+    return(df)
