@@ -117,13 +117,25 @@ def download_and_unzip_archive(url, filename = None, temp_dir = "./temp_data/", 
     # URL for location of data
     if filename == None:
         r = requests.get(url, stream=True)
-        filename = str(re.findall('\"(.+)\"', r.headers['content-disposition'])[0])
+        content_dispo = str(r.headers['content-disposition'])
+        if content_dispo != '':
+            filename = str(re.findall('\"(.+)\"', r.headers['content-disposition'])[0])
+        else:
+            filename = 'no_filename.zip'
     else:
         r = requests.get(os.path.join(url, filename), stream=True)
 
     # Download copy of zip file from url
     archive_path = os.path.join(temp_dir, filename)
-    with tqdm(total=int(r.headers.get("Content-Length"))) as pb:
+    if r.headers.get("Content-Length") != '':
+        content_length = int(r.headers.get("Content-Length"))
+    elif r.headers.get('Transfer-Encoding') == 'chunked':
+        content_length = int(requests.head(os.path.join(url, filename), headers={'Accept-Encoding': None}).headers.get("Content-Length"))
+    else:
+        Print("No Content Length on Header")
+        raise RuntimeError
+
+    with tqdm(total=content_length) as pb:
         with open(archive_path, "wb") as fd:
             for chunk in r.iter_content(chunk_size=128):
                 fd.write(chunk)
