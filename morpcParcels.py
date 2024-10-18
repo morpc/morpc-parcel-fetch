@@ -23,6 +23,7 @@ def gdf_from_services(url, fieldIds = None):
     import os
     import requests
     import json
+    import re
     from tqdm import tqdm
     import geopandas as gpd
     import pandas as pd
@@ -38,7 +39,7 @@ def gdf_from_services(url, fieldIds = None):
     # Extract the JSON from the API response
     result = r.json()
     # Extract the total record count from the JSON
-    totalRecordCount = result['properties']["count"]
+    totalRecordCount = int(re.findall('[0-9]+',str(r.json()))[0])
 
     # Request JSON and find maxRecordCount
     r = requests.get(json_url)
