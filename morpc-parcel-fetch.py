@@ -108,6 +108,9 @@ if not os.path.exists('./pickaway_data/'):
 pickaway_parcels.to_file("./pickaway_data/pickaway_parcels.gpkg", driver='GPKG')
 
 # %% [markdown]
+# ## Marion
+
+# %% [markdown]
 # ## Fairfield
 
 # %%
@@ -182,6 +185,13 @@ if not os.path.exists('./ross_data/'):
 ross_parcels.to_file("./ross_data/ross_parcels.gpkg", driver='GPKG')
 
 # %% [markdown]
+# ## Perry
+
+# %%
+morpcParcels.download_and_unzip_archive(url='https://pceopublic.s3.us-east-2.amazonaws.com/GISFiles/', filename='PCEOParcels.zip', temp_dir='./perry_data/parcel', keep_zip=True)
+# morpcParcels.download_and_unzip_archive(url='https://ftpro.accuglobe.schneidergis.com/PerryOH/', filename='PerryWebExtract.zip', temp_dir='./perry_data/cama', keep_zip=True)
+
+# %% [markdown]
 # ## Read and shape inputs
 
 # %%
@@ -215,8 +225,14 @@ licking_parcels['county'] = 'Licking'
 # %%
 madison_parcels = gpd.read_file('./madison_data/parcels/parcels.shp')
 madison_parcels = madison_parcels[['TAXPIN', 'geometry']].set_index('TAXPIN')
-land_use = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Appraisal.xml', columns=['Parcel_Number', 'Land_Use_Code']).set_index('Parcel_Number')
-year_built = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Dwelling.xml', columns=['Parcel_Number', 'Year_Built']).set_index('Parcel_Number')
+luc_val = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Value.xml', columns=['Parcel_Number', 'Land_Use_Code']).set_index('Parcel_Number')
+luc_tax = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Tax.xml', columns=['Parcel_Number', 'Land_Use_Code']).set_index('Parcel_Number')
+luc_app = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Appraisal.xml', columns=['Parcel_Number', 'Land_Use_Code']).set_index('Parcel_Number')
+luc_dis = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Distribution.xml', columns=['Parcel_Number', 'Land_Use_Code']).set_index('Parcel_Number')
+land_use = pd.concat([luc_val, luc_tax, luc_app, luc_dis]).dropna()
+year_build = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Building.xml', columns=['Parcel_Number', 'Year_Built']).set_index('Parcel_Number')
+year_dwell = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Dwelling.xml', columns=['Parcel_Number', 'Year_Built']).set_index('Parcel_Number')
+year_built = pd.concat([year_build, year_dwell]).dropna()
 acres = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel.xml', columns=['Parcel_Number', 'Acres']).set_index('Parcel_Number')
 madison_parcels = madison_parcels.join([land_use, year_built, acres])
 madison_parcels = madison_parcels.rename(columns = {'Acres':'acres','Land_Use_Code':'land_use','Year_Built':'year_built'})
@@ -289,25 +305,28 @@ ross_parcels = ross_parcels.to_crs('3735')
 ross_parcels['county'] = 'Ross'
 
 # %%
+perry_parcels = gpd.read_file('./perry_data/parcel/PCEOParcels.shp')
+perry_parcels = perry_parcels[['Name', 'Total_Acre', 'Class_Numb', 'geometry']]
+
+# %%
 all_parcels = pd.concat([franklin_parcels, delaware_parcels, madison_parcels, fairfield_parcels, morrow_parcels, knox_parcels, logan_parcels, ross_parcels])
 
 # %%
 landuse_filter = ['401', '402', '403', '511', '512', '513', '514', '515', '520', '521', '522', '523', '524', '525', '530', '531', '532', '533', '534', '534', '535', '540', '550']
 
 # %%
-all_parcels['acres'] = pd.to_numeric(all_parcels['acres'])
-
-# %%
 all_parcels['year_built'] = [pd.to_numeric(x, errors='coerce') for x in all_parcels['year_built']]
 all_parcels['year_built'] = all_parcels['year_built'].replace(0, None)
 
 # %%
+all_parcels['acres'] = pd.to_numeric(all_parcels['acres'])
 all_parcels = all_parcels.loc[all_parcels['land_use'].isin(landuse_filter)]
+all_parcels = all_parcels.loc[all_parcels['year_built'].isin([x for x in range(1700,2024)])]
 
 # %%
-all_parcels.loc[all_parcels['acres'] > 1 & all_parcels['land_use'].str.startswith('51'), 'housing_unit_type'] = "SF-LL"
-all_parcels.loc[all_parcels['acres'] <= 1 & all_parcels['land_use'].str.startswith('51'), 'housing_unit_type'] = "SF-SL"
-all_parcels.loc[all_parcels['land_use'].str.startswith(('52', '53', '54')), 'housing_unit_type'] = "SF-A"
+all_parcels.loc[(all_parcels['acres'] > .75 )& (all_parcels['land_use'].str.startswith('51')), 'housing_unit_type'] = "SF-LL"
+all_parcels.loc[(all_parcels['acres'] <= .75) & (all_parcels['land_use'].str.startswith('51')), 'housing_unit_type'] = "SF-SL"
+all_parcels.loc[all_parcels['land_use'].str.startswith(('52', '53', '54', '55')), 'housing_unit_type'] = "SF-A"
 all_parcels.loc[all_parcels['land_use'].str.startswith('4'), 'housing_unit_type'] = "MF"
 
 
@@ -315,7 +334,7 @@ all_parcels.loc[all_parcels['land_use'].str.startswith('4'), 'housing_unit_type'
 all_parcels.plot()
 
 # %%
-all_parcels['geometry'] = all_parcels['geometry'].centroid
+all_parcels['geometry'] = all_parcels['geometry'].copy().centroid
 
 # %%
 COUNTIES_FEATURECLASS_SOURCE_URL = "https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_county_500k.zip"
@@ -344,13 +363,22 @@ if(counties.crs.to_epsg() != 3735):
     counties = counties.to_crs(epsg=3735)
 
 # %%
+county_labels = counties.copy()
+county_labels['x'] = counties['geometry'].centroid.get_coordinates()['x']
+county_labels['y'] = counties['geometry'].centroid.get_coordinates()['y']
+county_labels = county_labels[['NAME','x','y']]
+
+# %%
 (plotnine.ggplot()
     + plotnine.geom_map(counties, color='white', fill='lightgrey')
     + plotnine.geom_map(all_parcels, plotnine.aes(fill='housing_unit_type'), color = None)
+    + plotnine.geom_text(county_labels, plotnine.aes(label = 'NAME', x = 'x', y = 'y'))
     + plotnine.theme(
         panel_background=plotnine.element_blank(),
         axis_text=plotnine.element_blank(),
-        axis_ticks=plotnine.element_blank()
+        axis_ticks=plotnine.element_blank(),
+        axis_title=plotnine.element_blank(),
+        figure_size=(12,10)
     )
     + plotnine.scale_fill_brewer(type='qual', palette=2)
 )
@@ -359,8 +387,15 @@ if(counties.crs.to_epsg() != 3735):
 pd.DataFrame(all_parcels.groupby('county').count()['housing_unit_type'])
 
 # %%
-x = all_parcels.loc[all_parcels['housing_unit_type']!='nan']
-pd.DataFrame(x.groupby(['county', 'housing_unit_type']).count()['geometry'])
+
+# %%
+(pd.DataFrame(all_parcels.loc[all_parcels['year_built']
+              .isin([x for x in range(2019,2024)])][['county', 'housing_unit_type', 'year_built']]
+              .groupby(['county','housing_unit_type', 'year_built'])
+              .size()
+             )
+ .rename(columns = {0:'total'})
+)
 
 # %%
 all_parcels.loc[all_parcels['acres']>0, 'acres'].describe()
