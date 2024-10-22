@@ -241,3 +241,22 @@ def extract_fields_from_cama(zip_path, filename, columns):
                     if file_type == "xlsx":
                         df = pd.read_excel(data, usecols = columns)
     return(df)
+
+def sample_columns_from_df(df):
+    column_df = pd.DataFrame(data = {"column_name":df.columns.tolist()})
+    column_df['column_sample'] = ""
+    for column in column_df['column_name']:
+            uniques = df[column].unique().tolist()
+            if len(uniques) > 10:
+                k = 10
+            else: 
+                k = len(uniques)
+            sample = "; ".join([str(x) for x in random.sample(uniques, k)])
+            column_df.loc[column_df['column_name']==column, 'column_sample'] = sample
+            column_df.loc[column_df['column_name']==column, 'unique_values'] = len(uniques)
+            column_df.loc[column_df['column_name']==column, 'is_empty'] = f"{sum(df[column].values == ' ')} ({round((sum(df[column].values == ' ')/df.shape[0])*100)}%)"
+            column_df.loc[column_df['column_name']==column, 'is_null'] = f"{sum(df[column].isnull())} ({round((sum(df[column].isnull())/df.shape[0])*100)}%)"
+            column_df.loc[column_df['column_name']==column, 'is_zero_int'] = f"{sum(df[column].values == 0)} ({round((sum(df[column].values == 0)/df.shape[0])*100)}%)"
+            column_df.loc[column_df['column_name']==column, 'is_zero_chr'] = f"{sum(df[column].values == '0')} ({round((sum(df[column].values == '0')/df.shape[0])*100)}%)"
+    column_df = column_df.replace("0 (0%)", "")
+    return(column_df)
