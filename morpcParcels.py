@@ -45,6 +45,7 @@ def gdf_from_services(url, fieldIds = None):
     r = requests.get(json_url)
     result = r.json()
     maxRecordCount = result['maxRecordCount']
+    crs = result['extent']['spatialReference']['latestWkid']
 
     avail_fields = [dict['name'] for dict in result['fields']]
 
@@ -71,7 +72,7 @@ def gdf_from_services(url, fieldIds = None):
             result = r.json()
          
             # Read this chunk of data into a GeoDataFrame
-            temp = gpd.GeoDataFrame.from_features(result["features"])
+            temp = gpd.GeoDataFrame.from_features(result["features"], crs=crs)
             if firstTime:
                 # If this is the first chunk of data, create a permanent copy of the GeoDataFrame that we can append to
                 gdf = temp.copy()
