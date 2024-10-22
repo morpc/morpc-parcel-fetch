@@ -72,7 +72,7 @@ def gdf_from_services(url, fieldIds = None):
             result = r.json()
          
             # Read this chunk of data into a GeoDataFrame
-            temp = gpd.GeoDataFrame.from_features(result["features"], crs=crs)
+            temp = gpd.GeoDataFrame.from_features(result["features"]).set_crs(crs)
             if firstTime:
                 # If this is the first chunk of data, create a permanent copy of the GeoDataFrame that we can append to
                 gdf = temp.copy()
@@ -84,7 +84,8 @@ def gdf_from_services(url, fieldIds = None):
             # Increase the offset so that the next request fetches the next chunk of data
             offset += maxRecordCount
             pb.update(maxRecordCount)
-
+        gdf = gdf.to_crs(crs)
+        
     return(gdf)
 
 # Download and unzip a file from a url. 
