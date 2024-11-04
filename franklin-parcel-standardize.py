@@ -80,7 +80,23 @@ morpcParcels.download_and_unzip_archive(url=appraisal_url, filename='Excel.zip',
 morpcParcels.download_and_unzip_archive(url=accounting_url, filename='Excel.zip', temp_dir='./franklin_data/accounting/', keep_zip=True)
 
 # %% [markdown]
+# Commercial units are only available online through the web reporter download (https://audr-apps.franklincountyohio.gov/Reporter). Select Parcel Number, Primary Land Use Code, Building Card Number, and Units.
+
+# %% [markdown]
 # # Read Data
+
+# %%
+MORPC_SDEPROD_GDB_SOURCE_DIR = "../morpc-arcsde-fetch/output_data/"
+MORPC_SDEPROD_GDB_FILENAME = "morpcSDEProduction.gdb"
+MORPC_PLACE_BOUNDARY_LAYER_NAME = "Bndy_CityVillageTwp_15cnty"
+MORPC_SDEPROD_GDB_FILEPATH = os.path.join(MORPC_SDEPROD_GDB_SOURCE_DIR, MORPC_SDEPROD_GDB_FILENAME)
+print(f"Data: {MORPC_SDEPROD_GDB_FILEPATH}; Layer: {MORPC_PLACE_BOUNDARY_LAYER_NAME}")
+
+# %%
+morpc_place_boundary = gpd.read_file(MORPC_SDEPROD_GDB_FILEPATH, layer = MORPC_PLACE_BOUNDARY_LAYER_NAME)
+
+# %% [markdown]
+# ## Parcel Geometry
 
 # %%
 franklin_geo = pyogrio.read_dataframe('./franklin_data/Output/FCA_SDE_Web_Prod.gdb/', layer='TaxParcel_CondoUnitStack_LGIM')
@@ -95,88 +111,110 @@ franklin_geo['PARCELID'] = [x + '-00' for x in franklin_geo['PARCELID']]
 franklin_geo['geometry'] = franklin_geo['geometry'].copy().centroid
 
 # %%
-unit = pl.read_excel("C:\\Users\\jinskeep\\Downloads\\WebReporter-2024-10-30.xlsx").to_pandas()
-
-# %%
-build = pl.read_excel(os.path.join('./franklin_data/appraisal/Build.xlsx')).to_pandas()
-
-# %%
-dwelling = pl.read_excel(os.path.join('./franklin_data/appraisal/Dwelling.xlsx')).to_pandas()
-
-# %%
-land = pl.read_excel(os.path.join('./franklin_data/appraisal/Land.xlsx')).to_pandas()
-
-# %%
-app_parcel = pl.read_excel(os.path.join('./franklin_data/appraisal/Parcel.xlsx')).to_pandas()
-
-# %%
-acc_parcel = pl.read_excel(os.path.join('./franklin_data/accounting/Parcel.xlsx')).to_pandas()
-
-# %%
-rental = pl.read_excel(os.path.join('./franklin_data/accounting/RentalContact.xlsx')).to_pandas()
+franklin_geo = franklin_geo.rename(columns = {'PARCELID':'PARCEL ID', 'CLASSCD':'LUC'})
 
 # %% [markdown]
-# ## Filter for apartments and other commercial housing
+# ## Commercial Unit counts
 
 # %%
-luc_filter = [401, 402, 403, 404, 414, 419, 431, 475]
+unit_raw = pl.read_excel("C:\\Users\\jinskeep\\OneDrive - Mid-Ohio Regional Planning Commission\\Local Repo\\morpc-parcel-fetch\\franklin_data\\com_units.xlsx").to_pandas()
+
+# %% [markdown]
+# ## Building card number for commercial parcels
 
 # %%
-apt_luc_acres = acc_parcel['LUC', ]
+build_raw = pl.read_excel(os.path.join('./franklin_data/appraisal/Build.xlsx')).to_pandas()
+
+# %% [markdown]
+# ## Dwelling card number and living units for dwellings. 
 
 # %%
-build['EFFYR'] = [x if pd.isna(y) else y for x, y in zip(build['YRBLT'], build['EFFYR'])]
+dwelling_raw = pl.read_excel(os.path.join('./franklin_data/appraisal/Dwelling.xlsx')).to_pandas()
+
+# %% [markdown]
+# ## Parcel land use codes and acerage
 
 # %%
-build = build[['PARCEL ID', 'EFFYR', 'USETYPE']]
-build = build.loc[build['USETYPE']=='011 - APARTMENT'].drop(columns = 'USETYPE')
-build = build.drop_duplicates()
+acc_parcel_raw = pl.read_excel(os.path.join('./franklin_data/accounting/Parcel.xlsx')).to_pandas()
+
+# %% [markdown]
+# ## Rentals for back up unit counts if not included in commerical units
 
 # %%
-unit = unit.loc[~unit['Units'].isna()].set_index('Parcel Number')
+rental_raw = pl.read_excel(os.path.join('./franklin_data/accounting/RentalContact.xlsx')).to_pandas()
+
+# %% [markdown]
+# # Apartments and other commercial housing
 
 # %%
-build = build.set_index('PARCEL ID').join(unit).rename(columns = ({'Units':'UNITS'})).reset_index()
+luc_filter = [401, 402, 403, 404, 414, 419, 431, 475, 510, 511, 512, 513, 514, 515, 520, 521, 522, 523, 524, 525, 530, 531, 532, 534, 535, 550, 551, 552, 553, 560, 570, 571, 572, 585, 586, 587, 588, 589, 591, 592, 593]
 
 # %%
-build
+unit = unit_raw[['Parcel Number', 'Building Card Number', 'Rental Units', 'Year Built', 'Year Effective', 'Units']].copy()
+unit['Units'] =[pd.to_numeric(x) if pd.isna(y) else pd.to_numeric(y) for x, y in zip(unit['Rental Units'], unit['Units'])]
+unit['Year Effective'] =[pd.to_numeric(x) if pd.isna(y) else pd.to_numeric(y) for x, y in zip(unit['Year Built'], unit['Year Effective'])]
+unit = unit.rename(columns = {'Parcel Number':'PARCEL ID', 'Building Card Number':'CARD', 'Year Effective':'EFFYR'})
+unit = unit.loc[unit['Units']>0].set_index(['PARCEL ID', 'CARD'])
+
+# %%
+unit = unit.groupby('PARCEL ID').agg({
+    "Units":'sum',
+    'EFFYR':'max'
+})
+
+# %%
+unit = unit.join(acc_parcel_raw[['PARCEL ID', 'LUC', 'GisAcres']].set_index('PARCEL ID').copy())
+unit['LUC'] = [pd.to_numeric(x) for x in unit['LUC']]
+
+# %%
+unit = unit.join(franklin_geo.set_index('PARCEL ID'), rsuffix='_geo')
+
+# %%
+unit = unit.reset_index()[['PARCEL ID', 'EFFYR', 'Units', 'LUC', 'GisAcres', 'geometry']].rename(columns = {'Units':'UNITS', 'GisAcres':'ACRES'}).drop_duplicates()
+unit['source'] = 'unit'
+
+# %% [markdown]
+# ## Dwellings and residential units
+
+# %%
+dwelling = dwelling_raw[['PARCEL ID', 'CARD', 'YRBLT', 'EFFYR', 'LIVUNITS']].copy()
 
 # %%
 dwelling['EFFYR'] = [x if pd.isna(y) else y for x, y in zip(dwelling['YRBLT'], dwelling['EFFYR'])]
+dwelling = dwelling.rename(columns={'LIVUNITS':'UNITS'})
+dwelling['UNITS'] = [pd.to_numeric(x) for x in dwelling['UNITS']]
 
 # %%
-dwelling = (dwelling[['PARCEL ID', 'CARD', 'LIVUNITS', 'EFFYR']]
+dwelling = (dwelling[['PARCEL ID', 'CARD', 'UNITS', 'EFFYR']]
  .drop_duplicates()
- .groupby(['PARCEL ID', 'CARD']).agg({
-     'LIVUNITS':'sum',
+ .groupby(['PARCEL ID']).agg({
+     'UNITS':'sum',
      'EFFYR':'max'
- }).reset_index()
-        .rename(columns={'LIVUNITS':'UNITS'})
-        .drop(columns = 'CARD'))
+ }).reset_index())
 
 # %%
-dwelling['UNITS'] = [int(x) for x in dwelling['UNITS']]
+dwelling = dwelling.set_index('PARCEL ID').join(acc_parcel[['PARCEL ID', 'LUC', 'GisAcres']].set_index('PARCEL ID'))
 
 # %%
-franklin_units = pd.concat([build, dwelling]).groupby(['PARCEL ID']).agg({'UNITS':'sum','EFFYR':'max'})
+dwelling = dwelling.join(franklin_geo.set_index('PARCEL ID'), rsuffix='_geo')
 
 # %%
-acc_parcel = acc_parcel[['PARCEL ID', 'LUC', 'GisAcres']].rename(columns={'GisAcres':'ACRES'}).set_index('PARCEL ID')
-acc_parcel['LUC'] = [pd.to_numeric(x, errors='coerce') for x in acc_parcel['LUC']]
+dwelling = dwelling.reset_index()[['PARCEL ID', 'EFFYR', 'UNITS', 'LUC', 'GisAcres', 'geometry']].rename(columns = {'GisAcres':'ACRES'})
+dwelling['source'] = 'dwelling'
 
 # %%
-franklin_units = franklin_units.join(acc_parcel)
+franklin_units = pd.concat([unit, dwelling])
+
+# %% [markdown]
+# ## Filter for Land use code and years
 
 # %%
-franklin_units = gpd.GeoDataFrame(franklin_units.join(franklin_geo.set_index('PARCELID'), how='left'), geometry='geometry')
+franklin_units = franklin_units.loc[franklin_units['LUC'].isin(luc_filter)]
 
 # %%
-luc_filter_res = [510, 511, 512, 513, 514, 515, 520, 521, 522, 523, 524, 525, 530, 531, 532, 534, 535, 550, 551, 552, 553, 560, 570, 571, 572, 585, 586, 587, 588, 589, 591, 592, 593]
-
-# %%
-franklin_units_filt = franklin_units.loc[franklin_units['CLASSCD'].isin([str(x) for x in luc_filter])]
-franklin_units_filt = franklin_units_filt.loc[franklin_units_filt['EFFYR']>=2022]
+franklin_units_filt = franklin_units.loc[franklin_units['EFFYR']>=2023]
 franklin_units_filt = franklin_units_filt.loc[franklin_units_filt['UNITS']>0]
+franklin_units_filt = franklin_units_filt.loc[~franklin_units_filt['geometry'].isna()]
 
 # %%
 franklin_units_filt['LUC'] = [str(x) for x in franklin_units_filt['LUC']]
@@ -186,22 +224,26 @@ franklin_units_filt.loc[(franklin_units_filt['ACRES'] > .75 )& (franklin_units_f
 franklin_units_filt.loc[(franklin_units_filt['ACRES'] <= .75) & (franklin_units_filt['LUC'].str.startswith('51')), 'housing_unit_type'] = "SF-SL"
 franklin_units_filt.loc[franklin_units_filt['LUC'].str.startswith(('52', '53', '54', '55')), 'housing_unit_type'] = "SF-A"
 franklin_units_filt.loc[franklin_units_filt['LUC'].str.startswith('4'), 'housing_unit_type'] = "MF"
+franklin_units_filt = gpd.GeoDataFrame(franklin_units_filt, geometry='geometry')
 
 # %%
 franklin_units_filt.groupby(['housing_unit_type', 'EFFYR']).agg({'UNITS':'sum'})
 
 # %%
-build.loc[build['PARCEL ID'] == '010-001082-00']
-
-# %%
-dwelling.loc[dwelling['PARCEL ID'] == '010-001082-00']
-
-# %%
 franklin_units_filt.sort_values('UNITS', ascending=False)
 
 # %%
+franklin_units_filt.sjoin(morpc_place_boundary[['Place_Name', 'geometry']]).groupby(['Place_Name']).agg({'UNITS':'sum'})
+
+# %%
+franklin_units_plot = franklin_units_filt.set_index('PARCEL ID').copy()
+franklin_units_plot['x'] = [point.x for point in franklin_units_plot['geometry']]
+franklin_units_plot['y'] = [point.y for point in franklin_units_plot['geometry']]
+
+# %%
 (plotnine.ggplot()
-    + plotnine.geom_map(franklin_units_filt, plotnine.aes(size = 'UNITS', fill = 'housing_unit_type'))
+    + plotnine.geom_map(morpc_place_boundary.loc[morpc_place_boundary['COUNTY']=='FRA'], fill="None", color='black')
+    + plotnine.geom_jitter(franklin_units_plot, plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'housing_unit_type'), color="None")
     + plotnine.theme(
         panel_background=plotnine.element_blank(),
         axis_text=plotnine.element_blank(),
@@ -209,6 +251,7 @@ franklin_units_filt.sort_values('UNITS', ascending=False)
         axis_title=plotnine.element_blank(),
         figure_size=(12,10)
     )
+   + plotnine.scale_size_radius(range=(.2,5), breaks = (1,50, 100, 250, 400))
 )
 
 # %%
