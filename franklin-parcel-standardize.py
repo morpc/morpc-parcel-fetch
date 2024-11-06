@@ -86,14 +86,23 @@ morpcParcels.download_and_unzip_archive(url=accounting_url, filename='Excel.zip'
 # # Read Data
 
 # %%
-MORPC_SDEPROD_GDB_SOURCE_DIR = "../morpc-arcsde-fetch/output_data/"
-MORPC_SDEPROD_GDB_FILENAME = "morpcSDEProduction.gdb"
-MORPC_PLACE_BOUNDARY_LAYER_NAME = "Bndy_CityVillageTwp_15cnty"
-MORPC_SDEPROD_GDB_FILEPATH = os.path.join(MORPC_SDEPROD_GDB_SOURCE_DIR, MORPC_SDEPROD_GDB_FILENAME)
-print(f"Data: {MORPC_SDEPROD_GDB_FILEPATH}; Layer: {MORPC_PLACE_BOUNDARY_LAYER_NAME}")
+STANDARD_GEO_VINTAGE = 2023
+JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH = "../morpc-censustiger-standardize/output_data/morpc-standardgeos-census-{}.gpkg".format(STANDARD_GEO_VINTAGE)
+JURISDICTIONS_PARTS_FEATURECLASS_LAYER = "JURIS-COUNTY"
+print("Data: {0}, layer={1}".format(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, JURISDICTIONS_PARTS_FEATURECLASS_LAYER))
 
 # %%
-morpc_place_boundary = gpd.read_file(MORPC_SDEPROD_GDB_FILEPATH, layer = MORPC_PLACE_BOUNDARY_LAYER_NAME)
+franklin_units_filt.crs
+
+# %%
+INPUT_DIR = "./input_data"
+
+inputDir = os.path.normpath(INPUT_DIR)
+if not os.path.exists(inputDir):
+    os.makedirs(inputDir)
+
+jurisdictionsPartsRaw = morpc.load_spatial_data(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, layerName=JURISDICTIONS_PARTS_FEATURECLASS_LAYER, archiveDir=inputDir)
+jurisdictionsPartsRaw = jurisdictionsPartsRaw.to_crs('epsg:3735')
 
 # %% [markdown]
 # ## Parcel Geometry
@@ -224,7 +233,7 @@ franklin_units_filt.loc[(franklin_units_filt['ACRES'] > .75 )& (franklin_units_f
 franklin_units_filt.loc[(franklin_units_filt['ACRES'] <= .75) & (franklin_units_filt['LUC'].str.startswith('51')), 'housing_unit_type'] = "SF-SL"
 franklin_units_filt.loc[franklin_units_filt['LUC'].str.startswith(('52', '53', '54', '55')), 'housing_unit_type'] = "SF-A"
 franklin_units_filt.loc[franklin_units_filt['LUC'].str.startswith('4'), 'housing_unit_type'] = "MF"
-franklin_units_filt = gpd.GeoDataFrame(franklin_units_filt, geometry='geometry')
+franklin_units_filt = gpd.GeoDataFrame(franklin_units_filt, geometry='geometry').to_crs('epsg:3735')
 
 # %%
 franklin_units_filt.groupby(['housing_unit_type', 'EFFYR']).agg({'UNITS':'sum'})
@@ -233,7 +242,7 @@ franklin_units_filt.groupby(['housing_unit_type', 'EFFYR']).agg({'UNITS':'sum'})
 franklin_units_filt.sort_values('UNITS', ascending=False)
 
 # %%
-franklin_units_filt.sjoin(morpc_place_boundary[['Place_Name', 'geometry']]).groupby(['Place_Name']).agg({'UNITS':'sum'})
+franklin_units_filt.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']]).groupby(['PLACECOMBO']).agg({'UNITS':'sum'})
 
 # %%
 franklin_units_plot = franklin_units_filt.set_index('PARCEL ID').copy()
@@ -242,7 +251,7 @@ franklin_units_plot['y'] = [point.y for point in franklin_units_plot['geometry']
 
 # %%
 (plotnine.ggplot()
-    + plotnine.geom_map(morpc_place_boundary.loc[morpc_place_boundary['COUNTY']=='FRA'], fill="None", color='black')
+    + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Franklin'], fill="None", color='black')
     + plotnine.geom_jitter(franklin_units_plot, plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'housing_unit_type'), color="None")
     + plotnine.theme(
         panel_background=plotnine.element_blank(),
