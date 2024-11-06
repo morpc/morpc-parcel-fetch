@@ -153,7 +153,7 @@ def download_and_unzip_archive(url, filename = None, temp_dir = "./temp_data/", 
         print(f"Removing zip")
         os.unlink(archive_path) # remove zip file
 
-def extract_fields_from_cama(zip_path, filename, columns):
+def extract_fields_from_cama(zip_path, filename, columns=None):
     import zipfile
     import xml.etree.ElementTree as ET
     import pandas as pd
@@ -170,13 +170,25 @@ def extract_fields_from_cama(zip_path, filename, columns):
                         dicts = []
                         for child in root:
                             dicts.append(child.attrib)
-                        df = pd.DataFrame(dicts)[columns]
+                        if columns==None:
+                            df = pd.DataFrame(dicts)
+                        else:
+                            df = pd.DataFrame(dicts)[columns]
                     if file_type == "csv":
-                        df = pd.read_csv(data, dtype = 'str', usecols = columns)
+                        if columns == None:
+                            df = pd.read_csv(data, dtype = 'str')
+                        else:
+                            df = pd.read_csv(data, dtype = 'str', usecols = columns)
                     if file_type == "txt":
-                        df = pd.read_csv(data, sep = "|", dtype="str", usecols = columns)
+                        if columns == None:
+                            df = pd.read_csv(data, sep = "|", dtype="str")
+                        else:
+                            df = pd.read_csv(data, sep = "|", dtype="str", usecols = columns)
                     if file_type == "xlsx":
-                        df = pd.read_excel(data, usecols = columns)
+                        if columns == None:
+                            df = pd.read_excel(data)
+                        else:
+                            df = pd.read_excel(data, usecols = columns)
     return(df)
 
 def sample_columns_from_df(df):
