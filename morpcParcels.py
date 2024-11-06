@@ -182,6 +182,7 @@ def extract_fields_from_cama(zip_path, filename, columns):
 def sample_columns_from_df(df):
     import pandas as pd
     import random
+    import textwrap
     column_df = pd.DataFrame(data = {"column_name":df.columns.tolist()})
     column_df['column_sample'] = ""
     for column in column_df['column_name']:
@@ -191,6 +192,7 @@ def sample_columns_from_df(df):
             else: 
                 k = len(uniques)
             sample = "; ".join([str(x) for x in random.sample(uniques, k)])
+            sample = textwrap.fill(sample, width=30)
             column_df.loc[column_df['column_name']==column, 'column_sample'] = sample
             column_df.loc[column_df['column_name']==column, 'unique_values'] = len(uniques)
             column_df.loc[column_df['column_name']==column, 'is_empty'] = f"{sum(df[column].values == ' ')} ({round((sum(df[column].values == ' ')/df.shape[0])*100)}%)"
