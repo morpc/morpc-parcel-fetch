@@ -54,9 +54,6 @@ jurisdictionsPartsRaw = morpc.load_spatial_data(JURISDICTIONS_PARTS_FEATURECLASS
 jurisdictionsPartsRaw = jurisdictionsPartsRaw.to_crs('epsg:3735')
 
 # %%
-madison_addr = pyogrio.read_dataframe("C:\\Users\\jinskeep\\OneDrive - Mid-Ohio Regional Planning Commission\\Local Repo\\morpc-parcel-fetch\\madison_data\\ogrip_addr\\MAD_ADDS\\MAD_ADDS.shp")
-
-# %%
 madison_parcels_raw = gpd.read_file('./madison_data/parcels/parcels.shp')
 
 
@@ -132,6 +129,10 @@ def get_housing_units_field(table, acres_name, luc_name):
 
 # %%
 madison_parcels = get_housing_units_field(madison_parcels, 'acres', 'land_use')
+
+# %%
+placecombo_units = madison_parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']]).groupby(['PLACECOMBO', 'housing_unit_type']).agg({'units':'sum'})
+placecombo_units
 
 # %%
 (plotnine.ggplot()
