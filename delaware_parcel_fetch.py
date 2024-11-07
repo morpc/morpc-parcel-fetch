@@ -66,6 +66,15 @@ auditor_addr_url = "https://services2.arcgis.com//ziXVKVy3BiopMCCU//arcgis//rest
 auditor_addr = morpcParcels.gdf_from_services(url = auditor_addr_url)
 
 # %%
+url = "https://services2.arcgis.com//ziXVKVy3BiopMCCU//arcgis//rest//services//Parcel//FeatureServer//0"
+
+# %%
+delaware_parcels = morpcParcels.gdf_from_services(url = url)
+if not os.path.exists('./delaware_data/'):
+    os.makedirs('./delaware_data/')
+delaware_parcels.to_file("./delaware_data/delaware_parcels.gpkg", driver='GPKG')
+
+# %%
 parcels = pyogrio.read_dataframe("C:\\Users\\jinskeep\OneDrive - Mid-Ohio Regional Planning Commission\\Desktop\\parcels\\parcels.shp")
 
 # %%
