@@ -54,6 +54,12 @@ jurisdictionsPartsRaw = morpc.load_spatial_data(JURISDICTIONS_PARTS_FEATURECLASS
 jurisdictionsPartsRaw = jurisdictionsPartsRaw.to_crs('epsg:3735')
 
 # %%
+morpcParcels.download_and_unzip_archive(url = "http://ftp1.co.madison.oh.us:81/Auditor/Data/GIS/", filename='parcels.zip', temp_dir='./madison_data/parcels/')
+
+# %%
+morpcParcels.download_and_unzip_archive(url='http://madison-public.issg.io/api/Document/', filename='PublicRecordsExtract.zip', temp_dir='./madison_data/cama/', keep_zip=True)
+
+# %%
 madison_parcels_raw = gpd.read_file('./madison_data/parcels/parcels.shp')
 
 
@@ -65,12 +71,7 @@ def get_land_use_codes(filename):
 
 
 # %%
-all_d = []
-for file in ['Parcel Appraisal.xml']:
-    d = get_land_use_codes(file)
-    d['source'] = file
-    all_d.append(d)
-land_use = pd.concat(all_d).drop_duplicates()
+land_use = get_land_use_codes('Parcel Appraisal.xml').drop_duplicates()
 land_use = land_use[['Parcel_Number', 'Land_Use_Code']].set_index('Parcel_Number')
 
 # %%
