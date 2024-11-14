@@ -37,13 +37,6 @@ sys.path.append(os.path.normpath('../morpc-parcel-fetch/'))
 import morpcParcels
 
 # %%
-MORPC_SDEPROD_GDB_SOURCE_DIR = "../morpc-arcsde-fetch/output_data/"
-MORPC_SDEPROD_GDB_FILENAME = "morpcSDEProduction.gdb"
-MORPC_PLACE_BOUNDARY_LAYER_NAME = "Bndy_CityVillageTwp_15cnty"
-MORPC_SDEPROD_GDB_FILEPATH = os.path.join(MORPC_SDEPROD_GDB_SOURCE_DIR, MORPC_SDEPROD_GDB_FILENAME)
-print(f"Data: {MORPC_SDEPROD_GDB_FILEPATH}; Layer: {MORPC_PLACE_BOUNDARY_LAYER_NAME}")
-
-# %%
 STANDARD_GEO_VINTAGE = 2023
 JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH = "../morpc-censustiger-standardize/output_data/morpc-standardgeos-census-{}.gpkg".format(STANDARD_GEO_VINTAGE)
 JURISDICTIONS_PARTS_FEATURECLASS_LAYER = "JURIS-COUNTY"
