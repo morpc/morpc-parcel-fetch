@@ -111,6 +111,7 @@ def download_and_unzip_archive(url, filename = None, temp_dir = "./temp_data/", 
     import re
     import requests
     import zipfile
+    import pandas as pd
     from tqdm import tqdm
     
     # Create folder at location designated by temp_dir
@@ -130,10 +131,10 @@ def download_and_unzip_archive(url, filename = None, temp_dir = "./temp_data/", 
 
     # Download copy of zip file from url
     archive_path = os.path.join(temp_dir, filename)
-    if r.headers.get("Content-Length") != '':
-        content_length = int(r.headers.get("Content-Length"))
+    if r.headers.get("Content-Length") != None:
+        content_length = pd.to_numeric(r.headers.get("Content-Length"))
     elif r.headers.get('Transfer-Encoding') == 'chunked':
-        content_length = int(requests.head(os.path.join(url, filename), headers={'Accept-Encoding': None}).headers.get("Content-Length"))
+        content_length = pd.to_numeric(requests.head(os.path.join(url, filename), headers={'Accept-Encoding': None}).headers.get("Content-Length"))
     else:
         Print("No Content Length on Header")
         raise RuntimeError
