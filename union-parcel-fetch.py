@@ -58,7 +58,7 @@ union_parcels = pyogrio.read_dataframe('union_data/temp/Property_Parcels.shp')
 union_parcels = union_parcels.to_crs('epsg:3735')
 
 # %%
-itables.widget.ITable(morpcParcels.sample_columns_from_df(union_parcels.drop(columns='geometry')))
+morpcParcels.sample_columns_from_df(union_parcels.drop(columns='geometry'))
 
 # %%
 [x for x in union_parcels.columns.values]
