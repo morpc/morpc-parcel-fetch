@@ -63,6 +63,11 @@ itables.show(morpcParcels.sample_columns_from_df(fairfield_parcels_raw))
 
 # %%
 fairfield_parcels_raw = pyogrio.read_dataframe('./fairfield_data/parcels/parcels.shp')
+
+# %%
+itables.show(fairfield_parcels_raw.loc[fairfield_parcels_raw['LUC'].isin(['401', '402', '403'])])
+
+# %%
 fairfield_parcels = fairfield_parcels_raw[['PARID', 'ACRES', 'LUC', 'YRBLT', 'geometry']]
 fairfield_parcels = fairfield_parcels.rename(columns = {'ACRES':'acres','LUC':'land_use','YRBLT':'year_built'})
 fairfield_parcels = fairfield_parcels.to_crs('3735')
@@ -102,10 +107,10 @@ def get_housing_units_field(table, acres_name, luc_name):
     table[acres_name] = [pd.to_numeric(x) for x in table[acres_name]]
     table[luc_name] = [str(x) for x in table[luc_name]]
 
-    table.loc[(table[acres_name] > .75 ) & (table[luc_name].str.startswith('51')), 'housing_unit_type'] = "SF-LL"
-    table.loc[(table[acres_name] <= .75) & (table[luc_name].str.startswith('51')), 'housing_unit_type'] = "SF-SL"
+    table.loc[(table[acres_name] > .75 ) & (table[luc_name].str.startswith(('51', '50'))), 'housing_unit_type'] = "SF-LL"
+    table.loc[(table[acres_name] <= .75) & (table[luc_name].str.startswith(('51', '50'))), 'housing_unit_type'] = "SF-SL"
     table.loc[table[luc_name].str.startswith(('52', '53', '54', '55')), 'housing_unit_type'] = "SF-A"
-    table.loc[table[luc_name].str.startswith('4'), 'housing_unit_type'] = "MF"
+    table.loc[table[luc_name].str.startswith(('40', '419')), 'housing_unit_type'] = "MF"
     return(table)
 
 
@@ -113,9 +118,12 @@ def get_housing_units_field(table, acres_name, luc_name):
 fairfield_parcels = get_housing_units_field(fairfield_parcels, "acres", 'land_use')
 
 # %%
+fairfield_parcels.loc[(fairfield_parcels['housing_unit_type']=='MF'), 'year_built']
+
+# %%
 (plotnine.ggplot()
     + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Fairfield'], fill="None", color='black')
-    + plotnine.geom_jitter(fairfield_parcels, plotnine.aes(x='x', y='y', size = 'units', fill = 'housing_unit_type'), color="None")
+    + plotnine.geom_jitter(fairfield_parcels.loc[fairfield_parcels['year_built']>2020], plotnine.aes(x='x', y='y', size = 'units', fill = 'housing_unit_type'), color="None")
     + plotnine.theme(
         panel_background=plotnine.element_blank(),
         axis_text=plotnine.element_blank(),
@@ -126,5 +134,8 @@ fairfield_parcels = get_housing_units_field(fairfield_parcels, "acres", 'land_us
    + plotnine.scale_size_radius(range=(.2,5), breaks = (1,50, 100, 250, 400))
  + plotnine.guides(size=plotnine.guide_legend(override_aes={'color':'black'}))
 )
+
+# %%
+fairfield_parcels.loc[fairfield_parcels['year_built']>2019].explore(column = 'housing_unit_type')
 
 # %%
