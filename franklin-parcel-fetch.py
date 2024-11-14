@@ -92,9 +92,6 @@ JURISDICTIONS_PARTS_FEATURECLASS_LAYER = "JURIS-COUNTY"
 print("Data: {0}, layer={1}".format(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, JURISDICTIONS_PARTS_FEATURECLASS_LAYER))
 
 # %%
-franklin_units_filt.crs
-
-# %%
 INPUT_DIR = "./input_data"
 
 inputDir = os.path.normpath(INPUT_DIR)
@@ -108,151 +105,96 @@ jurisdictionsPartsRaw = jurisdictionsPartsRaw.to_crs('epsg:3735')
 # ## Parcel Geometry
 
 # %%
-franklin_geo = pyogrio.read_dataframe('./franklin_data/Output/FCA_SDE_Web_Prod.gdb/', layer='TaxParcel_CondoUnitStack_LGIM')
+geo = pyogrio.read_dataframe('./franklin_data/Output/FCA_SDE_Web_Prod.gdb/', layer='TaxParcel_CondoUnitStack_LGIM')
 
 # %%
-franklin_geo = franklin_geo[['PARCELID', 'CLASSCD', 'geometry']]
+geo = geo[['PARCELID', 'CLASSCD', 'geometry']]
 
 # %%
-franklin_geo['PARCELID'] = [x + '-00' for x in franklin_geo['PARCELID']]
-
-# %%
-franklin_geo['geometry'] = franklin_geo['geometry'].copy().centroid
-
-# %%
-franklin_geo = franklin_geo.rename(columns = {'PARCELID':'PARCEL ID', 'CLASSCD':'LUC'})
+geo['PARCELID'] = [x + '-00' for x in geo['PARCELID']]
 
 # %% [markdown]
-# ## Commercial Unit counts
+# ## Unit counts from address
 
 # %%
-unit_raw = pl.read_excel("C:\\Users\\jinskeep\\OneDrive - Mid-Ohio Regional Planning Commission\\Local Repo\\morpc-parcel-fetch\\franklin_data\\com_units.xlsx").to_pandas()
+addr = pyogrio.read_dataframe('./franklin_data/Output/FCA_SDE_Web_Prod.gdb/', layer='LBRS_AddressPoints')
+
+# %%
+units = geo.sjoin(addr[['LSN', 'geometry']]).groupby('PARCELID').agg({'LSN':'count'}).rename(columns={'LSN':'units'})
 
 # %% [markdown]
 # ## Building card number for commercial parcels
 
 # %%
 build_raw = pl.read_excel(os.path.join('./franklin_data/appraisal/Build.xlsx')).to_pandas()
+build = build_raw[['PARCEL ID', 'CARD', 'YRBLT']].copy()
+build = (build[['PARCEL ID', 'CARD', 'YRBLT']]
+ .drop_duplicates()
+ .groupby(['PARCEL ID']).agg({
+     'YRBLT':'max'
+ }).reset_index())
 
 # %% [markdown]
 # ## Dwelling card number and living units for dwellings. 
 
 # %%
 dwelling_raw = pl.read_excel(os.path.join('./franklin_data/appraisal/Dwelling.xlsx')).to_pandas()
+dwelling = dwelling_raw[['PARCEL ID', 'CARD', 'YRBLT']].copy()
+dwelling = (dwelling[['PARCEL ID', 'CARD', 'YRBLT']]
+ .drop_duplicates()
+ .groupby(['PARCEL ID']).agg({
+     'YRBLT':'max'
+ }).reset_index())
 
 # %% [markdown]
 # ## Parcel land use codes and acerage
 
 # %%
-acc_parcel_raw = pl.read_excel(os.path.join('./franklin_data/accounting/Parcel.xlsx')).to_pandas()
-
-# %% [markdown]
-# ## Rentals for back up unit counts if not included in commerical units
+parcel_raw = pl.read_excel(os.path.join('./franklin_data/accounting/Parcel.xlsx')).to_pandas()
+parcel = parcel_raw[['PARCEL ID', 'LUC', 'GisAcres']]
 
 # %%
-rental_raw = pl.read_excel(os.path.join('./franklin_data/accounting/RentalContact.xlsx')).to_pandas()
-
-# %% [markdown]
-# # Apartments and other commercial housing
+parcel = parcel.set_index('PARCEL ID').join(pd.concat([dwelling, build]).set_index('PARCEL ID'))
 
 # %%
-luc_filter = [401, 402, 403, 404, 414, 419, 431, 475, 510, 511, 512, 513, 514, 515, 520, 521, 522, 523, 524, 525, 530, 531, 532, 534, 535, 550, 551, 552, 553, 560, 570, 571, 572, 585, 586, 587, 588, 589, 591, 592, 593]
+parcel = parcel.join(geo[['PARCELID', 'geometry']].set_index('PARCELID'))
 
 # %%
-unit = unit_raw[['Parcel Number', 'Building Card Number', 'Rental Units', 'Year Built', 'Year Effective', 'Units']].copy()
-unit['Units'] =[pd.to_numeric(x) if pd.isna(y) else pd.to_numeric(y) for x, y in zip(unit['Rental Units'], unit['Units'])]
-unit['Year Effective'] =[pd.to_numeric(x) if pd.isna(y) else pd.to_numeric(y) for x, y in zip(unit['Year Built'], unit['Year Effective'])]
-unit = unit.rename(columns = {'Parcel Number':'PARCEL ID', 'Building Card Number':'CARD', 'Year Effective':'EFFYR'})
-unit = unit.loc[unit['Units']>0].set_index(['PARCEL ID', 'CARD'])
+parcel = parcel.join(units)
+
 
 # %%
-unit = unit.groupby('PARCEL ID').agg({
-    "Units":'sum',
-    'EFFYR':'max'
-})
+def get_housing_units_field(table, acres_name, luc_name):
+    table[acres_name] = [pd.to_numeric(x) for x in table[acres_name]]
+    table[luc_name] = [str(x) for x in table[luc_name]]
+
+    table.loc[(table[acres_name] > .75 ) & (table[luc_name].str.startswith('51')), 'housing_unit_type'] = "SF-LL"
+    table.loc[(table[acres_name] <= .75) & (table[luc_name].str.startswith('51')), 'housing_unit_type'] = "SF-SL"
+    table.loc[table[luc_name].str.startswith(('52', '53', '54', '55')), 'housing_unit_type'] = "SF-A"
+    table.loc[table[luc_name].str.startswith('4'), 'housing_unit_type'] = "MF"
+    return(table)
+
 
 # %%
-unit = unit.join(acc_parcel_raw[['PARCEL ID', 'LUC', 'GisAcres']].set_index('PARCEL ID').copy())
-unit['LUC'] = [pd.to_numeric(x) for x in unit['LUC']]
+parcels = get_housing_units_field(parcel, 'GisAcres', 'LUC')
 
 # %%
-unit = unit.join(franklin_geo.set_index('PARCEL ID'), rsuffix='_geo')
+parcels = gpd.GeoDataFrame(parcels, geometry='geometry')
+parcels['geometry'] = parcels['geometry'].centroid
+parcels = parcels.loc[~parcels['geometry'].isna()]
+parcels['x'] = [point.x for point in parcels['geometry']]
+parcels['y'] = [point.y for point in parcels['geometry']]
 
 # %%
-unit = unit.reset_index()[['PARCEL ID', 'EFFYR', 'Units', 'LUC', 'GisAcres', 'geometry']].rename(columns = {'Units':'UNITS', 'GisAcres':'ACRES'}).drop_duplicates()
-unit['source'] = 'unit'
-
-# %% [markdown]
-# ## Dwellings and residential units
+parcels = parcels.loc[parcels['housing_unit_type']!='nan']
 
 # %%
-dwelling = dwelling_raw[['PARCEL ID', 'CARD', 'YRBLT', 'EFFYR', 'LIVUNITS']].copy()
-
-# %%
-dwelling['EFFYR'] = [x if pd.isna(y) else y for x, y in zip(dwelling['YRBLT'], dwelling['EFFYR'])]
-dwelling = dwelling.rename(columns={'LIVUNITS':'UNITS'})
-dwelling['UNITS'] = [pd.to_numeric(x) for x in dwelling['UNITS']]
-
-# %%
-dwelling = (dwelling[['PARCEL ID', 'CARD', 'UNITS', 'EFFYR']]
- .drop_duplicates()
- .groupby(['PARCEL ID']).agg({
-     'UNITS':'sum',
-     'EFFYR':'max'
- }).reset_index())
-
-# %%
-dwelling = dwelling.set_index('PARCEL ID').join(acc_parcel[['PARCEL ID', 'LUC', 'GisAcres']].set_index('PARCEL ID'))
-
-# %%
-dwelling = dwelling.join(franklin_geo.set_index('PARCEL ID'), rsuffix='_geo')
-
-# %%
-dwelling = dwelling.reset_index()[['PARCEL ID', 'EFFYR', 'UNITS', 'LUC', 'GisAcres', 'geometry']].rename(columns = {'GisAcres':'ACRES'})
-dwelling['source'] = 'dwelling'
-
-# %%
-franklin_units = pd.concat([unit, dwelling])
-
-# %% [markdown]
-# ## Filter for Land use code and years
-
-# %%
-franklin_units = franklin_units.loc[franklin_units['LUC'].isin(luc_filter)]
-
-# %%
-franklin_units_filt = franklin_units.loc[franklin_units['EFFYR']>=2023]
-franklin_units_filt = franklin_units_filt.loc[franklin_units_filt['UNITS']>0]
-franklin_units_filt = franklin_units_filt.loc[~franklin_units_filt['geometry'].isna()]
-
-# %%
-franklin_units_filt['LUC'] = [str(x) for x in franklin_units_filt['LUC']]
-
-# %%
-franklin_units_filt.loc[(franklin_units_filt['ACRES'] > .75 )& (franklin_units_filt['LUC'].str.startswith('51')), 'housing_unit_type'] = "SF-LL"
-franklin_units_filt.loc[(franklin_units_filt['ACRES'] <= .75) & (franklin_units_filt['LUC'].str.startswith('51')), 'housing_unit_type'] = "SF-SL"
-franklin_units_filt.loc[franklin_units_filt['LUC'].str.startswith(('52', '53', '54', '55')), 'housing_unit_type'] = "SF-A"
-franklin_units_filt.loc[franklin_units_filt['LUC'].str.startswith('4'), 'housing_unit_type'] = "MF"
-franklin_units_filt = gpd.GeoDataFrame(franklin_units_filt, geometry='geometry').to_crs('epsg:3735')
-
-# %%
-franklin_units_filt.groupby(['housing_unit_type', 'EFFYR']).agg({'UNITS':'sum'})
-
-# %%
-franklin_units_filt.sort_values('UNITS', ascending=False)
-
-# %%
-franklin_units_filt.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']]).groupby(['PLACECOMBO']).agg({'UNITS':'sum'})
-
-# %%
-franklin_units_plot = franklin_units_filt.set_index('PARCEL ID').copy()
-franklin_units_plot['x'] = [point.x for point in franklin_units_plot['geometry']]
-franklin_units_plot['y'] = [point.y for point in franklin_units_plot['geometry']]
+parcels = parcels.reset_index()
 
 # %%
 (plotnine.ggplot()
     + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Franklin'], fill="None", color='black')
-    + plotnine.geom_jitter(franklin_units_plot, plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'housing_unit_type'), color="None")
+    + plotnine.geom_jitter(parcels.loc[parcels['YRBLT']>=2019], plotnine.aes(x='x', y='y', size = 'units', fill = 'housing_unit_type'), color="None")
     + plotnine.theme(
         panel_background=plotnine.element_blank(),
         axis_text=plotnine.element_blank(),
@@ -260,7 +202,8 @@ franklin_units_plot['y'] = [point.y for point in franklin_units_plot['geometry']
         axis_title=plotnine.element_blank(),
         figure_size=(12,10)
     )
-   + plotnine.scale_size_radius(range=(.2,5), breaks = (1,50, 100, 250, 400))
+   + plotnine.scale_size_radius(range=(.2,5), breaks = (1,50, 100, 250, 500))
+   + plotnine.guides(size=plotnine.guide_legend(override_aes={'color':'black'}))
 )
 
 # %%
