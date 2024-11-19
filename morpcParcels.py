@@ -1,5 +1,5 @@
 # Create a GeoDataFrame object from an ArcGIS service feature layer filtered by column names. 
-def gdf_from_services(url, fieldIds = None):
+def gdf_from_services(url, fieldIds = None, crs='from_service'):
     """Creates a GeoDataFrame from a request to an ArcGIS Services. Automatically queries for maxRecordCount and iterates
     over the whole feature layer to return all features. Optional: Filter the results by including a list of field IDs.
 
@@ -14,6 +14,8 @@ def gdf_from_services(url, fieldIds = None):
     fieldIds : list of str
         A list of strings that match field ids in the feature layer.
 
+    crs : 'from_service', None, or str to pass to gpd.GeoDataframe.set_crs()
+
     Returns
     ----------
     gdf : pandas.core.frame.DataFrame
@@ -27,6 +29,7 @@ def gdf_from_services(url, fieldIds = None):
     from tqdm import tqdm
     import geopandas as gpd
     import pandas as pd
+    from IPython.display import clear_output
 
     
     #Construct urls to query for getting total count, json, and geojson
@@ -45,8 +48,14 @@ def gdf_from_services(url, fieldIds = None):
     r = requests.get(json_url)
     result = r.json()
     maxRecordCount = result['maxRecordCount']
-    crs = result['extent']['spatialReference']['latestWkid']
-
+    
+    if crs == 'from_service':
+        crs = result['extent']['spatialReference']['latestWkid']
+    elif crs == None:
+        crs = None:
+    else:
+        crs = crs
+        
     avail_fields = [dict['name'] for dict in result['fields']]
 
     if fieldIds != None:
@@ -61,31 +70,30 @@ def gdf_from_services(url, fieldIds = None):
     offset = 0
     exceededLimit = True
     print(geojson_url)
-    with tqdm(total = totalRecordCount, desc = f"Downloading from GeoJSON...") as pb:
-        while offset < totalRecordCount:
-            # print("Downloading records from {}&resultOffset={}&resultRecordCount={}".format(url, offset, recordCount))
-            # Request 2000 records from the API starting with the record indicated by offset. 
-            # Configure the request to include only the required fields, to project the geometries to 
-            # Ohio State Plane South coordinate reference system (EPSG:3735), and to format the data as GeoJSON
-            r = requests.get(f"{geojson_url}&resultOffset={offset}&resultRecordCount={maxRecordCount}")
-            # Extract the GeoJSON from the API response
-            result = r.json()
-         
-            # Read this chunk of data into a GeoDataFrame
-            temp = gpd.GeoDataFrame.from_features(result["features"]).set_crs(crs)
-            if firstTime:
-                # If this is the first chunk of data, create a permanent copy of the GeoDataFrame that we can append to
-                gdf = temp.copy()
-                firstTime = False
-            else:
-                # If this is not the first chunk, append to the permanent GeoDataFrame
-                gdf = pd.concat([gdf, temp], axis="index")
-         
-            # Increase the offset so that the next request fetches the next chunk of data
-            offset += maxRecordCount
-            pb.update(maxRecordCount)
-        gdf = gdf.to_crs(crs)
-        
+    while offset < totalRecordCount:
+        # print("Downloading records from {}&resultOffset={}&resultRecordCount={}".format(url, offset, recordCount))
+        # Request 2000 records from the API starting with the record indicated by offset. 
+        # Configure the request to include only the required fields, to project the geometries to 
+        # Ohio State Plane South coordinate reference system (EPSG:3735), and to format the data as GeoJSON
+        r = requests.get(f"{geojson_url}&resultOffset={offset}&resultRecordCount={maxRecordCount}")
+        # Extract the GeoJSON from the API response
+        result = r.json()
+     
+        # Read this chunk of data into a GeoDataFrame
+        temp = gpd.GeoDataFrame.from_features(result["features"], crs=crs)
+        if firstTime:
+            # If this is the first chunk of data, create a permanent copy of the GeoDataFrame that we can append to
+            gdf = temp.copy()
+            firstTime = False
+        else:
+            # If this is not the first chunk, append to the permanent GeoDataFrame
+            gdf = pd.concat([gdf, temp])
+     
+        # Increase the offset so that the next request fetches the next chunk of data
+        offset += maxRecordCount
+        print(f"{offset} of {totalRecordCount}")
+        clear_output(wait = True)
+    gdf = gpd.GeoDataFrame(gdf, geometry='geometry', crs=crs)
     return(gdf)
 
 # Download and unzip a file from a url. 
@@ -213,3 +221,15 @@ def sample_columns_from_df(df):
             column_df.loc[column_df['column_name']==column, 'is_zero_chr'] = f"{sum(df[column].values == '0')} ({round((sum(df[column].values == '0')/df.shape[0])*100)}%)"
     column_df = column_df.replace("0 (0%)", "")
     return(column_df)
+
+
+def get_housing_unit_type_field(table, acres_name, luc_name):
+    import pandas as pd
+    table[acres_name] = [pd.to_numeric(x) for x in table[acres_name]]
+    table[luc_name] = [str(x) for x in table[luc_name]]
+
+    table.loc[(table[acres_name] > .75 )& (table[luc_name].str.startswith(('51', '501', '502', '503', '504', '505'))), 'TYPE'] = "SF-LL"
+    table.loc[(table[acres_name] <= .75) & (table[luc_name].str.startswith(('51', '501', '502', '503', '504', '505'))), 'TYPE'] = "SF-SL"
+    table.loc[table[luc_name].str.startswith(('52', '53', '54', '55')), 'TYPE'] = "SF-A"
+    table.loc[table[luc_name].str.startswith('4'), 'TYPE'] = "MF"
+    return(table)
