@@ -236,5 +236,5 @@ def get_housing_unit_type_field(table, acres_name, luc_name):
     table.loc[(table[acres_name] > .75 )& (table[luc_name].str.startswith(('51', '501', '502', '503', '504', '505'))), 'TYPE'] = "SF-LL"
     table.loc[(table[acres_name] <= .75) & (table[luc_name].str.startswith(('51', '501', '502', '503', '504', '505'))), 'TYPE'] = "SF-SL"
     table.loc[table[luc_name].str.startswith(('52', '53', '54', '55')), 'TYPE'] = "SF-A"
-    table.loc[table[luc_name].str.startswith('4'), 'TYPE'] = "MF"
+    table.loc[table[luc_name].str.startswith(('401', '402', '403')), 'TYPE'] = "MF"
     return(table)
