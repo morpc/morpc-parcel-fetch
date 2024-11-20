@@ -61,9 +61,6 @@ union_parcels = union_parcels.to_crs('epsg:3735')
 morpcParcels.sample_columns_from_df(union_parcels.drop(columns='geometry'))
 
 # %%
-[x for x in union_parcels.columns.values]
-
-# %%
 pd.DataFrame(union_parcels.loc[union_parcels['ClassNumbe']!=0].groupby(['Parcel']).size()).rename(columns = {0:'size'}).sort_values('size', ascending=False)
 
 # %%

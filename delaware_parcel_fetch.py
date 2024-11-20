@@ -107,9 +107,12 @@ parcels['x'] = [point.x for point in parcels['geometry']]
 parcels['y'] = [point.y for point in parcels['geometry']]
 
 # %%
+parcels = parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']].to_crs('3734')).drop(columns='index_right')
+
+# %%
 (plotnine.ggplot()
-    + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Delaware'].to_crs(parcels.crs), fill="None", color='black')
-    + plotnine.geom_jitter(parcels.loc[parcels['YRBUILT']>2020], plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'TYPE'), color="None")
+    + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Delaware'].to_crs('epsg:3734'), fill="None", color='black')
+    + plotnine.geom_jitter(parcels, plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'TYPE'), color="None")
     + plotnine.theme(
         panel_background=plotnine.element_blank(),
         axis_text=plotnine.element_blank(),
@@ -122,17 +125,15 @@ parcels['y'] = [point.y for point in parcels['geometry']]
 )
 
 # %%
-pd.DataFrame(parcels.loc[parcels['YRBUILT']>2020].groupby(['YRBUILT', 'TYPE']).size()).rename(columns={0:'UNITS'})
-
-# %%
-pd.DataFrame(parcels.loc[parcels['YRBUILT']>2020].groupby(['PLACECOMBO', 'YRBUILT']).agg({'UNITS':'sum'})).rename(columns={0:'UNITS'}).reset_index().pivot(index='PLACECOMBO', columns='YRBUILT',values= 'UNITS')
+parcels = parcels.to_crs('epsg:3735')
+parcels['COUNTY'] = 'Delaware'
 
 # %%
 if not os.path.exists('./output_data/'):
     os.makedirs('./output_data/')
-
-# %%
 if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
     parcels.to_file('./output_data/hu_type_from_parcels.gpkg')
 else:
     parcels.to_file('./output_data/hu_type_from_parcels.gpkg', mode='a')
+
+# %%

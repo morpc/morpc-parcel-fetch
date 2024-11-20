@@ -173,9 +173,6 @@ parcels['y'] = [point.y for point in parcels['geometry']]
 parcels = parcels.reset_index()
 
 # %%
-[x for x in parcels.columns.values]
-
-# %%
 parcels = parcels.rename(columns={
     'index':'OBJECTID',
     'GisAcres':'ACRES',
@@ -185,9 +182,12 @@ parcels = parcels.rename(columns={
 })
 
 # %%
+parcels = parcels.sjoin(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=="Franklin"][['PLACECOMBO', 'geometry']]).drop(columns='index_right')
+
+# %%
 (plotnine.ggplot()
     + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Franklin'].to_crs(parcels.crs), fill="None", color='black')
-    + plotnine.geom_jitter(parcels.loc[parcels['YRBLT']>=2019], plotnine.aes(x='x', y='y', size = 'units', fill = 'TYPE'), color="None")
+    + plotnine.geom_jitter(parcels, plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'TYPE'), color="None")
     + plotnine.theme(
         panel_background=plotnine.element_blank(),
         axis_text=plotnine.element_blank(),
@@ -198,6 +198,10 @@ parcels = parcels.rename(columns={
    + plotnine.scale_size_radius(range=(.2,5), breaks = (1,50, 100, 250, 500))
    + plotnine.guides(size=plotnine.guide_legend(override_aes={'color':'black'}))
 )
+
+# %%
+parcels = parcels.to_crs('3735')
+parcels['COUNTY'] = 'Franklin'
 
 # %%
 if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
