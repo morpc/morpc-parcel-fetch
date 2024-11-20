@@ -44,8 +44,6 @@ STANDARD_GEO_VINTAGE = 2023
 JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH = "../morpc-censustiger-standardize/output_data/morpc-standardgeos-census-{}.gpkg".format(STANDARD_GEO_VINTAGE)
 JURISDICTIONS_PARTS_FEATURECLASS_LAYER = "JURIS-COUNTY"
 print("Data: {0}, layer={1}".format(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, JURISDICTIONS_PARTS_FEATURECLASS_LAYER))
-
-# %%
 INPUT_DIR = "./input_data"
 
 inputDir = os.path.normpath(INPUT_DIR)
@@ -66,7 +64,7 @@ driver.close()
 
 # %%
 r = requests.get(parcel_path)
-temp_dir = "./knox_data/parcels/"
+temp_dir = "./input_data/knox_data/parcels/"
 if not os.path.exists(temp_dir):
     os.makedirs(temp_dir)
 
@@ -76,10 +74,12 @@ with open(archive_path, "wb") as fd:
 
 with zipfile.ZipFile(archive_path) as zip:
     for zip_info in zip.infolist():
+        if zip_info.filename.startswith('_'):
+            continue
+        if zip_info.filename.endswith('/'):
+            continue
+        zip_info.filename = zip_info.filename.split('/')[-1]
         zip.extract(zip_info, temp_dir)
-
-# %%
-morpcParcels.download_and_unzip_archive(url=cama_path, temp_dir='./knox_data/cama', keep_zip=True)
 
 # %%
 cama_url = "https://www.knoxcountyauditor.org/site-links/weights-measures/"
@@ -91,25 +91,32 @@ cama_link = driver.find_element(By.XPATH, "//html[1]/body[1]/header[1]/div[1]/di
 cama_path = cama_link.get_attribute('href')
 driver.close()
 
-# %% jupyter={"source_hidden": true}
-all_columns = []
-for file in os.listdir('./knox_data/cama/'):
-    if not file.endswith('.zip'):
-        table = pd.read_csv(os.path.join('./knox_data/cama/', file), sep="|", dtype='str')
-        table.columns = [f"{x}_{file}" for x in table.columns.values]
-        all_columns.append(morpcParcels.sample_columns_from_df(table))
-all_columns = pd.concat(all_columns)
-
-# %% jupyter={"source_hidden": true}
-all_columns.to_csv('./knox_data/all_cama_columns.csv')
-
 # %%
-r = requests.get(addr_path)
-temp_dir = "./knox_data/address/"
+r = requests.get(cama_path)
+temp_dir = "./input_data/knox_data/cama/"
 if not os.path.exists(temp_dir):
     os.makedirs(temp_dir)
 
-archive_path = os.path.join(temp_dir, os.path.basename(parcel_path))
+cama_filename = "CAMADatabase.zip"
+
+archive_path = os.path.join(temp_dir, cama_filename)
+with open(archive_path, "wb") as fd:
+    fd.write(r.content)
+
+with zipfile.ZipFile(archive_path) as zip:
+    for zip_info in zip.infolist():
+        zip.extract(zip_info, temp_dir)
+
+# %%
+addr_path = "https://co.knox.oh.us/wp-content/uploads/2024/09/AddressPts-9-13-24.zip"
+
+# %%
+r = requests.get(addr_path)
+temp_dir = "./input_data/knox_data/address/"
+if not os.path.exists(temp_dir):
+    os.makedirs(temp_dir)
+
+archive_path = os.path.join(temp_dir, os.path.basename(addr_path))
 with open(archive_path, "wb") as fd:
     fd.write(r.content)
 
@@ -121,12 +128,18 @@ with zipfile.ZipFile(archive_path) as zip:
 # # Load Data
 
 # %%
-knox_parcels_raw = pyogrio.read_dataframe('./knox_data/parcels/parcels.shp')
+parcels_raw = pyogrio.read_dataframe('./input_data/knox_data/parcels/parcels.shp')
 
 # %%
-extract = morpcParcels.extract_fields_from_cama('./knox_data/cama/no_filename.zip', filename='MVP1_OH_Extract.txt')
-build = morpcParcels.extract_fields_from_cama('./knox_data/cama/no_filename.zip', filename='MVP1_OH_Building.txt')
-dwell = morpcParcels.extract_fields_from_cama('./knox_data/cama/no_filename.zip', filename='MVP1_OH_Dwelling.txt')
+parcels_raw.crs
+
+# %%
+addr = pyogrio.read_dataframe('./input_data/knox_data/address/AddressPts.shp')
+
+# %%
+extract = pd.read_csv('./input_data/knox_data/cama/MVP1_OH_Extract.txt', sep="|", dtype='str')
+build = pd.read_csv('./input_data/knox_data/cama/MVP1_OH_Building.txt', sep="|", dtype='str')
+dwell = pd.read_csv('./input_data/knox_data/cama/MVP1_OH_Dwelling.txt', sep="|", dtype='str')
 
 # %%
 extract = extract[['mpropertyNumber', 'CardCount', 'mClassificationId', 'macres']].set_index('mpropertyNumber')
@@ -144,65 +157,57 @@ cama = extract.join(pd.concat([dwell, build])).reset_index()
 cama['mpropertyNumber'] = [re.sub('[^0-9]', '', x) for x in cama['mpropertyNumber']]
 
 # %%
-addr_path = "https://co.knox.oh.us/wp-content/uploads/2024/09/AddressPts-9-13-24.zip"
+parcels = parcels_raw[['PIN', 'Acres', 'geometry']].set_index('PIN').join(cama.set_index('mpropertyNumber'))
 
 # %%
-knox_addr = pyogrio.read_dataframe('./knox_data/address/AddressPts.shp')
+parcels = parcels.loc[~parcels['mClassificationId'].isna()]
 
 # %%
-knox_parcels = knox_parcels_raw[['PIN', 'Acres', 'geometry']].set_index('PIN').join(cama.set_index('mpropertyNumber'))
+units = parcels_raw.reset_index().sjoin(addr[['GlobalID', 'geometry']]).groupby('PIN').agg({'GlobalID':'count'}).rename(columns = {'GlobalID':'units'}).sort_values('units', ascending=False)
 
 # %%
-knox_parcels = knox_parcels.loc[~knox_parcels['mClassificationId'].isna()]
+parcels = gpd.GeoDataFrame(parcels, geometry='geometry')
 
 # %%
-units = knox_parcels_raw.reset_index().sjoin(knox_addr[['GlobalID', 'geometry']]).groupby('PIN').agg({'GlobalID':'count'}).rename(columns = {'GlobalID':'units'}).sort_values('units', ascending=False)
+parcels = parcels.join(units)[['geometry', 'mClassificationId', 'macres', 'YearBuilt', 'units']]
 
 # %%
-knox_parcels = gpd.GeoDataFrame(knox_parcels, geometry='geometry')
+parcels['YearBuilt'] = [pd.to_numeric(x) for x in parcels['YearBuilt']]
+parcels['macres'] = [pd.to_numeric(x) for x in parcels['macres']]
+parcels['units'] = [pd.to_numeric(x) for x in parcels['units']]
 
 # %%
-knox_parcels = knox_parcels.join(units)[['geometry', 'mClassificationId', 'macres', 'YearBuilt', 'units']]
+parcels = parcels.drop_duplicates()
 
 # %%
-knox_parcels['YearBuilt'] = [pd.to_numeric(x) for x in knox_parcels['YearBuilt']]
-knox_parcels['macres'] = [pd.to_numeric(x) for x in knox_parcels['macres']]
-knox_parcels['units'] = [pd.to_numeric(x) for x in knox_parcels['units']]
+parcels = morpcParcels.get_housing_unit_type_field(parcels, 'macres', 'mClassificationId')
 
 # %%
-knox_parcels = knox_parcels.drop_duplicates()
-
-
-# %%
-def get_housing_units_field(table, acres_name, luc_name):
-    table[acres_name] = [pd.to_numeric(x) for x in table[acres_name]]
-    table[luc_name] = [str(x) for x in table[luc_name]]
-
-    table.loc[(table[acres_name] > .75 ) & (table[luc_name].str.startswith('51')), 'housing_unit_type'] = "SF-LL"
-    table.loc[(table[acres_name] <= .75) & (table[luc_name].str.startswith('51')), 'housing_unit_type'] = "SF-SL"
-    table.loc[table[luc_name].str.startswith(('52', '53', '54', '55')), 'housing_unit_type'] = "SF-A"
-    table.loc[table[luc_name].str.startswith('4'), 'housing_unit_type'] = "MF"
-    return(table)
-
+parcels = parcels.loc[parcels['TYPE']!='nan']
 
 # %%
-knox_parcels = get_housing_units_field(knox_parcels, 'macres', 'mClassificationId')
+parcels['geometry'] = parcels['geometry'].centroid
+parcels = parcels.loc[~parcels['geometry'].isna()]
 
 # %%
-knox_parcels = knox_parcels.loc[knox_parcels['housing_unit_type']!='nan']
+parcels['x'] = [point.x for point in parcels['geometry']]
+parcels['y'] = [point.y for point in parcels['geometry']]
 
 # %%
-knox_parcels['geometry'] = knox_parcels['geometry'].centroid
-knox_parcels = knox_parcels.loc[~knox_parcels['geometry'].isna()]
+parcels.columns.values
 
 # %%
-knox_parcels['x'] = [point.x for point in knox_parcels['geometry']]
-knox_parcels['y'] = [point.y for point in knox_parcels['geometry']]
+parcels = parcels.rename(columns={
+    'mClassificationId':'OBJECTID',
+    'macres':'ACRES',
+    'YearBuilt':'YRBUILT',
+    'units':'UNITS',
+})
 
 # %%
 (plotnine.ggplot()
     + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Knox'].to_crs('epsg:3734'), fill="None", color='black')
-    + plotnine.geom_jitter(knox_parcels, plotnine.aes(x='x', y='y', size = 'units', fill = 'housing_unit_type'), color="None")
+    + plotnine.geom_jitter(parcels, plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'TYPE'), color="None")
     + plotnine.theme(
         panel_background=plotnine.element_blank(),
         axis_text=plotnine.element_blank(),
@@ -213,3 +218,11 @@ knox_parcels['y'] = [point.y for point in knox_parcels['geometry']]
    + plotnine.scale_size_radius(range=(.2,10), breaks = (1, 10, 50, 100))
      + plotnine.guides(size=plotnine.guide_legend(override_aes={'color':'black'}))
 )
+
+# %%
+if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
+    parcels.to_file('./output_data/hu_type_from_parcels.gpkg')
+else:
+    parcels.to_file('./output_data/hu_type_from_parcels.gpkg', mode='a')
+
+# %%
