@@ -30,11 +30,32 @@ import random
 import itables
 import plotnine
 from tqdm import tqdm
+from IPython.display import clear_output
 
 sys.path.append(os.path.normpath('../morpc-common/'))
 import morpc
 sys.path.append(os.path.normpath('../morpc-parcel-fetch/'))
 import morpcParcels
+
+# %% [markdown]
+# # Archive Data
+
+# %%
+addr_url = "https://services2.arcgis.com//ziXVKVy3BiopMCCU//arcgis//rest//services//Address_Point//FeatureServer//0"
+addr = morpcParcels.gdf_from_services(url = addr_url, crs=None).set_crs('NAD83')
+if not os.path.exists('./input_data/delaware_data/addr/'):
+    os.makedirs('./input_data/delaware_data/addr/')
+addr.to_file("./input_data/delaware_data/addr/delaware_addr.shp")
+
+# %%
+parcels_url = "https://services2.arcgis.com//ziXVKVy3BiopMCCU//arcgis//rest//services//Parcel//FeatureServer//0"
+parcels = morpcParcels.gdf_from_services(url = parcels_url, crs=None).set_crs('NAD83')
+if not os.path.exists('./input_data/delaware_data/parcels/'):
+    os.makedirs('./input_data/delaware_data/parcels/')
+parcels.to_file("./input_data/delaware_data/parcels/delaware_parcels.shp")
+
+# %% [markdown]
+# # Read Data
 
 # %%
 STANDARD_GEO_VINTAGE = 2023
@@ -50,46 +71,33 @@ if not os.path.exists(inputDir):
 jurisdictionsPartsRaw = morpc.load_spatial_data(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, layerName=JURISDICTIONS_PARTS_FEATURECLASS_LAYER, archiveDir=inputDir)
 
 # %%
-addr_url = "https://services2.arcgis.com//ziXVKVy3BiopMCCU//arcgis//rest//services//Address_Point//FeatureServer//0"
+parcels = pyogrio.read_dataframe("./input_data/delaware_data/parcels/delaware_parcels.shp")
 
 # %%
-auditor_addr = morpcParcels.gdf_from_services(url = addr_url)
-if not os.path.exists('./input_data/delaware_data/addr/'):
-    os.makedirs('./input_data/delaware_data/addr/')
-auditor_addr.to_file("./input_data/delaware_data/addr/delaware_addr.gpkg", driver='GPKG')
+addr = pyogrio.read_dataframe("./input_data/delaware_data/addr/delaware_addr.shp")
 
 # %%
-parcels_url = "https://services2.arcgis.com//ziXVKVy3BiopMCCU//arcgis//rest//services//Parcel//FeatureServer//0"
+parcels = parcels[['OBJECTID', 'CLASS', 'YRBUILT', 'ACRES', 'geometry']].sjoin(addr[['LSN', 'geometry']]).drop(columns='index_right')
 
 # %%
-delaware_parcels = morpcParcels.gdf_from_services(url = parcels_url)
-if not os.path.exists('./input_data/delaware_data/parcels/'):
-    os.makedirs('./input_data/delaware_data/parcels/')
-delaware_parcels.to_file("./input_data/delaware_data/parcels/delaware_parcels.gpkg", driver='GPKG')
+parcels['CLASS'] = [str(x) for x in parcels['CLASS']]
+parcels['YRBUILT'] = [int(x) for x in parcels['YRBUILT']]
+parcels['ACRES'] = [float(x) for x in parcels['ACRES']]
 
 # %%
-parcels = pyogrio.read_dataframe("C:\\Users\\jinskeep\OneDrive - Mid-Ohio Regional Planning Commission\\Desktop\\parcels\\parcels.shp")
+parcels = parcels.groupby('OBJECTID').agg({
+    'CLASS':'first',
+    'YRBUILT':'max',
+    'ACRES':'max',
+    'LSN':'count',
+    'geometry':'first'
+}).rename(columns = {'LSN':'UNITS'})
 
 # %%
-units = pd.DataFrame(auditor_addr[['PARCEL_NO', 'LSN']].groupby('PARCEL_NO').size()).rename(columns = {0:'UNITS'})
+parcels = morpcParcels.get_housing_unit_type_field(parcels, 'ACRES', 'CLASS')
 
 # %%
-parcels = parcels[['PARCEL_NO', 'CLASS', 'YRBUILT', 'ACRES', 'geometry']].set_index('PARCEL_NO').join(units)
-
-# %%
-parcels = parcels.loc[(~parcels['UNITS'].isna()) & (parcels['YRBUILT']>0)].drop_duplicates()
-
-# %%
-parcels.loc[(parcels['ACRES'] > .75 )& (parcels['CLASS'].str.startswith(('51', '501', '502', '503', '504', '505'))), 'TYPE'] = "SF-LL"
-parcels.loc[(parcels['ACRES'] <= .75) & (parcels['CLASS'].str.startswith(('51', '501', '502', '503', '504', '505'))), 'TYPE'] = "SF-SL"
-parcels.loc[parcels['CLASS'].str.startswith(('52', '53', '54', '55')), 'TYPE'] = "SF-A"
-parcels.loc[parcels['CLASS'].str.startswith('4'), 'TYPE'] = "MF"
-
-# %%
-parcels = parcels.loc[parcels['TYPE']!='nan']
-
-# %%
-parcels = gpd.GeoDataFrame(parcels, geometry='geometry').to_crs('epsg:3735')
+parcels = gpd.GeoDataFrame(parcels, geometry='geometry', crs='NAD83').to_crs('epsg:3734')
 
 # %%
 parcels['geometry'] = parcels['geometry'].centroid
@@ -99,17 +107,8 @@ parcels['x'] = [point.x for point in parcels['geometry']]
 parcels['y'] = [point.y for point in parcels['geometry']]
 
 # %%
-parcels['YRBUILT'] = [pd.to_numeric(x) for x in parcels['YRBUILT']]
-
-# %%
-parcels = parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']])
-
-# %%
-parcels = parcels.drop(columns=['index_right'])
-
-# %%
 (plotnine.ggplot()
-    + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Delaware'], fill="None", color='black')
+    + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Delaware'].to_crs(parcels.crs), fill="None", color='black')
     + plotnine.geom_jitter(parcels.loc[parcels['YRBUILT']>2020], plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'TYPE'), color="None")
     + plotnine.theme(
         panel_background=plotnine.element_blank(),
@@ -129,3 +128,11 @@ pd.DataFrame(parcels.loc[parcels['YRBUILT']>2020].groupby(['YRBUILT', 'TYPE']).s
 pd.DataFrame(parcels.loc[parcels['YRBUILT']>2020].groupby(['PLACECOMBO', 'YRBUILT']).agg({'UNITS':'sum'})).rename(columns={0:'UNITS'}).reset_index().pivot(index='PLACECOMBO', columns='YRBUILT',values= 'UNITS')
 
 # %%
+if not os.path.exists('./output_data/'):
+    os.makedirs('./output_data/')
+
+# %%
+if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
+    parcels.to_file('./output_data/hu_type_from_parcels.gpkg')
+else:
+    parcels.to_file('./output_data/hu_type_from_parcels.gpkg', mode='a')
