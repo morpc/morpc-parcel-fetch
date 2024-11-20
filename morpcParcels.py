@@ -52,7 +52,7 @@ def gdf_from_services(url, fieldIds = None, crs='from_service'):
     if crs == 'from_service':
         crs = result['extent']['spatialReference']['latestWkid']
     elif crs == None:
-        crs = None:
+        crs = None
     else:
         crs = crs
         
@@ -80,20 +80,25 @@ def gdf_from_services(url, fieldIds = None, crs='from_service'):
         result = r.json()
      
         # Read this chunk of data into a GeoDataFrame
-        temp = gpd.GeoDataFrame.from_features(result["features"], crs=crs)
+        temp = gpd.GeoDataFrame.from_features(result["features"])
         if firstTime:
             # If this is the first chunk of data, create a permanent copy of the GeoDataFrame that we can append to
             gdf = temp.copy()
             firstTime = False
         else:
             # If this is not the first chunk, append to the permanent GeoDataFrame
-            gdf = pd.concat([gdf, temp])
+            gdf = pd.concat([gdf, temp], axis='index')
      
         # Increase the offset so that the next request fetches the next chunk of data
         offset += maxRecordCount
         print(f"{offset} of {totalRecordCount}")
         clear_output(wait = True)
-    gdf = gpd.GeoDataFrame(gdf, geometry='geometry', crs=crs)
+        
+    if crs != None:
+        gdf = gpd.GeoDataFrame(gdf, geometry='geometry').set_crs(crs)
+    else:
+        gdf = gpd.GeoDataFrame(gdf, geometry='geometry')
+        
     return(gdf)
 
 # Download and unzip a file from a url. 
