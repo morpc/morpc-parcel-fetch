@@ -38,107 +38,80 @@ sys.path.append(os.path.normpath('../morpc-parcel-fetch/'))
 import morpcParcels
 
 # %%
+morpcParcels.download_and_unzip_archive(url = "http://ftp1.co.madison.oh.us:81/Auditor/Data/GIS/", filename='parcels.zip', temp_dir='./input_data/madison_data/parcels/')
+
+# %%
+morpcParcels.download_and_unzip_archive(url='http://madison-public.issg.io/api/Document/', filename='PublicRecordsExtract.zip', temp_dir='./input_data/madison_data/cama/', keep_zip=True)
+
+# %%
 STANDARD_GEO_VINTAGE = 2023
 JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH = "../morpc-censustiger-standardize/output_data/morpc-standardgeos-census-{}.gpkg".format(STANDARD_GEO_VINTAGE)
 JURISDICTIONS_PARTS_FEATURECLASS_LAYER = "JURIS-COUNTY"
 print("Data: {0}, layer={1}".format(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, JURISDICTIONS_PARTS_FEATURECLASS_LAYER))
-
-# %%
 INPUT_DIR = "./input_data"
-
 inputDir = os.path.normpath(INPUT_DIR)
 if not os.path.exists(inputDir):
     os.makedirs(inputDir)
-
 jurisdictionsPartsRaw = morpc.load_spatial_data(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, layerName=JURISDICTIONS_PARTS_FEATURECLASS_LAYER, archiveDir=inputDir)
 jurisdictionsPartsRaw = jurisdictionsPartsRaw.to_crs('epsg:3735')
 
 # %%
-morpcParcels.download_and_unzip_archive(url = "http://ftp1.co.madison.oh.us:81/Auditor/Data/GIS/", filename='parcels.zip', temp_dir='./madison_data/parcels/')
+madison_parcels_raw = gpd.read_file('./input_data/madison_data/parcels/parcels.shp')
 
 # %%
-morpcParcels.download_and_unzip_archive(url='http://madison-public.issg.io/api/Document/', filename='PublicRecordsExtract.zip', temp_dir='./madison_data/cama/', keep_zip=True)
+build = morpcParcels.extract_fields_from_cama(zip_path='./input_data/madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Building.xml', columns=['Parcel_Number', 'Card', 'Year_Built', 'Year_Effective']).set_index('Parcel_Number')
+dwell = morpcParcels.extract_fields_from_cama(zip_path='./input_data/madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Dwelling.xml', columns=['Parcel_Number', 'Card', 'Year_Built', 'Year_Effective']).set_index('Parcel_Number')
+yrbuilt = pd.concat([build, dwell]).dropna()
+yrbuilt['Year_Effective'] = [x if y==None else y for x, y in zip(yrbuilt['Year_Built'], yrbuilt['Year_Effective'])]
+yrbuilt = yrbuilt.groupby('Parcel_Number').agg({'Year_Effective':'max'})
 
 # %%
-madison_parcels_raw = gpd.read_file('./madison_data/parcels/parcels.shp')
-
-
-# %%
-def get_land_use_codes(filename):
-    d = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename=filename)
-    d = d[['Property_ID', 'Parcel_Number', 'Land_Use_Code']].drop_duplicates()
-    return(d)
-
-
-# %%
-land_use = get_land_use_codes('Parcel Appraisal.xml').drop_duplicates()
-land_use = land_use[['Parcel_Number', 'Land_Use_Code']].set_index('Parcel_Number')
-
-# %%
-year_build = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Building.xml', columns=['Parcel_Number', 'Card', 'Year_Built', 'Year_Effective']).set_index('Parcel_Number')
-year_dwell = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Dwelling.xml', columns=['Parcel_Number', 'Card', 'Year_Built', 'Year_Effective']).set_index('Parcel_Number')
-year_built = pd.concat([year_build, year_dwell]).dropna()
-year_built['Year_Effective'] = [x if y==None else y for x, y in zip(year_built['Year_Built'], year_built['Year_Effective'])]
-
-# %%
-units_build = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Building Composite.xml', columns=['Parcel_Number', 'Units']).set_index('Parcel_Number')
+units_build = morpcParcels.extract_fields_from_cama(zip_path='./input_data/madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Building Composite.xml', columns=['Parcel_Number', 'Units']).set_index('Parcel_Number')
 units_build['Units'] = [int(x) for x in units_build['Units']]
-units_dwell = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Dwelling.xml', columns=['Parcel_Number', 'Card', 'Units_Designed', 'Units_Converted'])
+units_dwell = morpcParcels.extract_fields_from_cama(zip_path='./input_data/madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Dwelling.xml', columns=['Parcel_Number', 'Card', 'Units_Designed', 'Units_Converted'])
 units_dwell['Units'] = [int(x) if y=='0' else int(y) for x, y in zip(units_dwell['Units_Designed'], units_dwell['Units_Converted'])]
-
-# %%
 units_dwell = units_dwell.groupby('Parcel_Number').agg({'Units':'sum'})
 units = pd.concat([units_build, units_dwell]).dropna()
 
 # %%
-acres = morpcParcels.extract_fields_from_cama(zip_path='./madison_data/cama/PublicRecordsExtract.zip', filename='Parcel.xml', columns=['Parcel_Number', 'Acres']).set_index('Parcel_Number')
+acres = morpcParcels.extract_fields_from_cama(zip_path='./input_data/madison_data/cama/PublicRecordsExtract.zip', filename='Parcel.xml', columns=['Parcel_Number', 'Acres']).set_index('Parcel_Number')
 
 # %%
-madison_parcels = madison_parcels_raw[['TAXPIN', 'geometry']].set_index('TAXPIN').join([land_use, year_built, acres, units])
+value = morpcParcels.extract_fields_from_cama('./input_data/madison_data/cama/PublicRecordsExtract.zip', 'Parcel Value.xml')
+land_use = value[['Parcel_Number', 'Land_Use_Code']].set_index('Parcel_Number')
 
 # %%
-madison_parcels = madison_parcels.rename(columns = {'Acres':'acres','Land_Use_Code':'land_use','Year_Built':'year_built', 'Units':'units'})
-madison_parcels = madison_parcels[['acres', 'land_use', 'year_built', 'units', 'geometry']]
-madison_parcels = madison_parcels.to_crs('3735')
-madison_parcels['county'] = 'Madison'
+parcels = madison_parcels_raw[['TAXPIN', 'geometry']].set_index('TAXPIN')
 
 # %%
-madison_parcels['geometry'] = madison_parcels['geometry'].centroid
-madison_parcels = madison_parcels.loc[~madison_parcels['geometry'].isna()]
+parcels = parcels.join([land_use, yrbuilt, acres, units]).drop_duplicates()
 
 # %%
-madison_parcels['x'] = [point.x for point in madison_parcels['geometry']]
-madison_parcels['y'] = [point.y for point in madison_parcels['geometry']]
+parcels['geometry'] = parcels['geometry'].centroid
+parcels = parcels.loc[~parcels['geometry'].isna()]
 
 # %%
-madison_parcels = madison_parcels.loc[~madison_parcels['land_use'].isna()]
-madison_parcels = madison_parcels.loc[~madison_parcels['year_built'].isna()]
-madison_parcels = madison_parcels.loc[~madison_parcels['units'].isna()]
-
+parcels['x'] = [point.x for point in parcels['geometry']]
+parcels['y'] = [point.y for point in parcels['geometry']]
 
 # %%
-def get_housing_units_field(table, acres_name, luc_name):
-    table[acres_name] = [pd.to_numeric(x) for x in table[acres_name]]
-    table[luc_name] = [str(x) for x in table[luc_name]]
-
-    table.loc[(table[acres_name] > .75 ) & (table[luc_name].str.startswith('51')), 'housing_unit_type'] = "SF-LL"
-    table.loc[(table[acres_name] <= .75) & (table[luc_name].str.startswith('51')), 'housing_unit_type'] = "SF-SL"
-    table.loc[table[luc_name].str.startswith(('52', '53', '54', '55')), 'housing_unit_type'] = "SF-A"
-    table.loc[table[luc_name].str.startswith('4'), 'housing_unit_type'] = "MF"
-    return(table)
-
+parcels = parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']]).drop(columns = "index_right")
 
 # %%
-madison_parcels = get_housing_units_field(madison_parcels, 'acres', 'land_use')
+parcels = parcels.reset_index().rename(columns = {
+    'TAXPIN':'OBJECTID',
+    'Acres':'ACRES',
+    'Land_Use_Code':'CLASS',
+    'Year_Effective':'YRBUILT', 
+    'Units':'UNITS'})
 
 # %%
-placecombo_units = madison_parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']]).groupby(['PLACECOMBO', 'housing_unit_type']).agg({'units':'sum'})
-placecombo_units
+parcels = morpcParcels.get_housing_unit_type_field(parcels, 'ACRES', 'LUC')
 
 # %%
 (plotnine.ggplot()
     + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Madison'], fill="None", color='black')
-    + plotnine.geom_jitter(madison_parcels, plotnine.aes(x='x', y='y', size = 'units', fill = 'housing_unit_type'), color="None")
+    + plotnine.geom_jitter(parcels.loc[parcels['TYPE']!='nan'], plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'TYPE'), color="None")
     + plotnine.theme(
         panel_background=plotnine.element_blank(),
         axis_text=plotnine.element_blank(),
@@ -147,7 +120,20 @@ placecombo_units
         figure_size=(12,10)
     )
    + plotnine.scale_size_radius(range=(.2,10), breaks = (1,10, 25, 50))
-     + plotnine.guides(size=plotnine.guide_legend(override_aes={'color':'black'}))
+   + plotnine.guides(size=plotnine.guide_legend(override_aes={'color':'black'}))
 )
+
+# %%
+parcels = parcels.to_crs('3735')
+parcels['COUNTY'] = 'Madison'
+
+# %%
+parcels[['OBJECTID', 'CLASS', 'ACRES', 'YRBUILT', 'UNITS', 'TYPE', 'COUNTY', 'PLACECOMBO', 'x', 'y', 'geometry']]
+if not os.path.exists('./output_data/'):
+    os.makedirs('./output_data/')
+if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
+    parcels.to_file('./output_data/hu_type_from_parcels.gpkg')
+else:
+    parcels.to_file('./output_data/hu_type_from_parcels.gpkg', mode='a')
 
 # %%

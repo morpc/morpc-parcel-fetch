@@ -127,13 +127,16 @@ parcels = parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']].to_crs
 # %%
 parcels = parcels.to_crs('epsg:3735')
 parcels['COUNTY'] = 'Delaware'
+parcels = parcels.reset_index()
 
 # %%
+parcels.columns.values
+
+# %%
+parcels[['OBJECTID', 'CLASS', 'ACRES', 'YRBUILT', 'UNITS', 'TYPE', 'COUNTY', 'PLACECOMBO', 'x', 'y', 'geometry']]
 if not os.path.exists('./output_data/'):
     os.makedirs('./output_data/')
 if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
     parcels.to_file('./output_data/hu_type_from_parcels.gpkg')
 else:
     parcels.to_file('./output_data/hu_type_from_parcels.gpkg', mode='a')
-
-# %%

@@ -204,6 +204,12 @@ parcels = parcels.to_crs('3735')
 parcels['COUNTY'] = 'Franklin'
 
 # %%
+parcels.columns.values
+
+# %%
+parcels[['OBJECTID', 'CLASS', 'ACRES', 'YRBUILT', 'UNITS', 'TYPE', 'COUNTY', 'PLACECOMBO', 'x', 'y', 'geometry']]
+if not os.path.exists('./output_data/'):
+    os.makedirs('./output_data/')
 if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
     parcels.to_file('./output_data/hu_type_from_parcels.gpkg')
 else:

@@ -37,93 +37,68 @@ sys.path.append(os.path.normpath('../morpc-parcel-fetch/'))
 import morpcParcels
 
 # %%
+morpcParcels.download_and_unzip_archive(url='https://www.co.fairfield.oh.us/gis/Fairfield_Data/', filename='parcels.zip', temp_dir='./input_data/fairfield_data/parcels/')
+
+# %%
+morpcParcels.download_and_unzip_archive(url='https://www.co.fairfield.oh.us/gis/Fairfield_Data/', filename='addresses.zip', temp_dir='./input_data/fairfield_data/addr/')
+
+# %%
 STANDARD_GEO_VINTAGE = 2023
 JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH = "../morpc-censustiger-standardize/output_data/morpc-standardgeos-census-{}.gpkg".format(STANDARD_GEO_VINTAGE)
 JURISDICTIONS_PARTS_FEATURECLASS_LAYER = "JURIS-COUNTY"
 print("Data: {0}, layer={1}".format(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, JURISDICTIONS_PARTS_FEATURECLASS_LAYER))
-
-# %%
 INPUT_DIR = "./input_data"
-
 inputDir = os.path.normpath(INPUT_DIR)
 if not os.path.exists(inputDir):
     os.makedirs(inputDir)
-
 jurisdictionsPartsRaw = morpc.load_spatial_data(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, layerName=JURISDICTIONS_PARTS_FEATURECLASS_LAYER, archiveDir=inputDir)
-jurisdictionsPartsRaw = jurisdictionsPartsRaw.to_crs('epsg:3735')
 
 # %%
-morpcParcels.download_and_unzip_archive(url='https://www.co.fairfield.oh.us/gis/Fairfield_Data/', filename='parcels.zip', temp_dir='./fairfield_data/parcels/')
+parcels_raw = pyogrio.read_dataframe('./input_data/fairfield_data/parcels/parcels.shp')
 
 # %%
-morpcParcels.download_and_unzip_archive(url='https://www.co.fairfield.oh.us/gis/Fairfield_Data/', filename='addresses.zip', temp_dir='./fairfield_data/parcels/')
+parcels = parcels_raw[['PARID', 'ACRES', 'LUC', 'YRBLT', 'geometry']]
+parcels = parcels.rename(columns = {'YRBLT':'YRBUILT'})
 
 # %%
-itables.show(morpcParcels.sample_columns_from_df(fairfield_parcels_raw))
+addr_raw = pyogrio.read_dataframe('./input_data/fairfield_data/addr/addresses.shp')
 
 # %%
-fairfield_parcels_raw = pyogrio.read_dataframe('./fairfield_data/parcels/parcels.shp')
-
-# %%
-itables.show(fairfield_parcels_raw.loc[fairfield_parcels_raw['LUC'].isin(['401', '402', '403'])])
-
-# %%
-fairfield_parcels = fairfield_parcels_raw[['PARID', 'ACRES', 'LUC', 'YRBLT', 'geometry']]
-fairfield_parcels = fairfield_parcels.rename(columns = {'ACRES':'acres','LUC':'land_use','YRBLT':'year_built'})
-fairfield_parcels = fairfield_parcels.to_crs('3735')
-fairfield_parcels['county'] = 'Fairfield'
-
-# %%
-fairfield_addr_raw = pyogrio.read_dataframe('./fairfield_data/parcels/addresses.shp')
-
-# %%
-units = (fairfield_addr_raw[['LSN', 'geometry']].sjoin(fairfield_parcels[['PARID', 'geometry']])
+units = (addr_raw[['LSN', 'geometry']].sjoin(parcels[['PARID', 'geometry']])
  .groupby('PARID').agg({
      'LSN':'count'
  })
  .sort_values('LSN', ascending=False)
- .rename(columns = {'LSN':'units'}))
+ .rename(columns = {'LSN':'UNITS'}))
 
 # %%
-fairfield_parcels = fairfield_parcels.set_index('PARID').join(units)
+parcels = parcels.set_index('PARID').join(units)
 
 # %%
-fairfield_parcels['geometry'] = fairfield_parcels['geometry'].centroid
-fairfield_parcels['x'] = [point.x for point in fairfield_parcels['geometry']]
-fairfield_parcels['y'] = [point.y for point in fairfield_parcels['geometry']]
+parcels['geometry'] = parcels['geometry'].centroid
+parcels['x'] = [point.x for point in parcels['geometry']]
+parcels['y'] = [point.y for point in parcels['geometry']]
 
 # %%
-fairfield_parcels['year_built'] = [pd.to_numeric(x) for x in fairfield_parcels['year_built']]
+parcels['YRBUILT'] = [pd.to_numeric(x) for x in parcels['YRBUILT']]
 
 # %%
-fairfield_parcels = fairfield_parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']])
+parcels = parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']]).drop(columns=['index_right'])
 
 # %%
-pd.DataFrame(fairfield_parcels.loc[fairfield_parcels['year_built']>2020].groupby(['PLACECOMBO', 'year_built']).agg({'units':'sum'})).rename(columns={0:'units'}).reset_index().pivot(index='PLACECOMBO', columns='year_built',values= 'units')
-
-
-# %%
-def get_housing_units_field(table, acres_name, luc_name):
-    table[acres_name] = [pd.to_numeric(x) for x in table[acres_name]]
-    table[luc_name] = [str(x) for x in table[luc_name]]
-
-    table.loc[(table[acres_name] > .75 ) & (table[luc_name].str.startswith(('51', '50'))), 'housing_unit_type'] = "SF-LL"
-    table.loc[(table[acres_name] <= .75) & (table[luc_name].str.startswith(('51', '50'))), 'housing_unit_type'] = "SF-SL"
-    table.loc[table[luc_name].str.startswith(('52', '53', '54', '55')), 'housing_unit_type'] = "SF-A"
-    table.loc[table[luc_name].str.startswith(('40', '419')), 'housing_unit_type'] = "MF"
-    return(table)
-
+parcels = morpcParcels.get_housing_unit_type_field(parcels, "ACRES", 'LUC')
 
 # %%
-fairfield_parcels = get_housing_units_field(fairfield_parcels, "acres", 'land_use')
-
-# %%
-fairfield_parcels.loc[(fairfield_parcels['housing_unit_type']=='MF'), 'year_built']
+parcels = parcels.reset_index().rename(columns = {
+    'PARID':'OBJECTID',
+    'LUC':'CLASS'
+})
+parcels['COUNTY'] = 'Fairfield'
 
 # %%
 (plotnine.ggplot()
     + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Fairfield'], fill="None", color='black')
-    + plotnine.geom_jitter(fairfield_parcels.loc[fairfield_parcels['year_built']>2020], plotnine.aes(x='x', y='y', size = 'units', fill = 'housing_unit_type'), color="None")
+    + plotnine.geom_jitter(parcels.loc[parcels['TYPE']!='nan'], plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'TYPE'), color="None")
     + plotnine.theme(
         panel_background=plotnine.element_blank(),
         axis_text=plotnine.element_blank(),
@@ -136,6 +111,15 @@ fairfield_parcels.loc[(fairfield_parcels['housing_unit_type']=='MF'), 'year_buil
 )
 
 # %%
-fairfield_parcels.loc[fairfield_parcels['year_built']>2019].explore(column = 'housing_unit_type')
+parcels = parcels.to_crs('3735')
+
+# %%
+parcels[['OBJECTID', 'CLASS', 'ACRES', 'YRBUILT', 'UNITS', 'TYPE', 'COUNTY', 'PLACECOMBO', 'x', 'y', 'geometry']]
+if not os.path.exists('./output_data/'):
+    os.makedirs('./output_data/')
+if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
+    parcels.to_file('./output_data/hu_type_from_parcels.gpkg')
+else:
+    parcels.to_file('./output_data/hu_type_from_parcels.gpkg', mode='a')
 
 # %%
