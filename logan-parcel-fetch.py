@@ -47,47 +47,38 @@ STANDARD_GEO_VINTAGE = 2023
 JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH = "../morpc-censustiger-standardize/output_data/morpc-standardgeos-census-{}.gpkg".format(STANDARD_GEO_VINTAGE)
 JURISDICTIONS_PARTS_FEATURECLASS_LAYER = "JURIS-COUNTY"
 print("Data: {0}, layer={1}".format(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, JURISDICTIONS_PARTS_FEATURECLASS_LAYER))
-
-# %%
 INPUT_DIR = "./input_data"
-
 inputDir = os.path.normpath(INPUT_DIR)
 if not os.path.exists(inputDir):
     os.makedirs(inputDir)
-
 jurisdictionsPartsRaw = morpc.load_spatial_data(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, layerName=JURISDICTIONS_PARTS_FEATURECLASS_LAYER, archiveDir=inputDir)
 
 # %% [markdown]
-# # Get parcels
+# # Archive input data
 
 # %%
 parcel_url = 'https://services9.arcgis.com/mFxO7gBbusFBQ5o9/ArcGIS/rest/services/Logan_County_Parcels/FeatureServer/12'
-
-# %%
 parcels = morpcParcels.gdf_from_services(parcel_url)
+if not os.path.exists('./input_data/logan_data/addr/'):
+    os.makedirs('./input_data/logan_data/addr/')
+parcels.to_file("./input_data/logan_data/addr/logan_parcels.shp")
 
 # %%
-parcels = parcels[['Parcel_N_1', 'Land_Use_C', 'Acres', 'geometry']]
-
-# %% [markdown]
-# # Get cama
+addr_url = 'https://services9.arcgis.com/mFxO7gBbusFBQ5o9/arcgis/rest/services/Logan_County_Addresses/FeatureServer/0'
+parcels = morpcParcels.gdf_from_services(parcel_url)
+if not os.path.exists('./input_data/logan_data/addr/'):
+    os.makedirs('./input_data/logan_data/addr/')
+parcels.to_file("./input_data/logan_data/addr/logan_parcels.shp")
 
 # %%
 cama_url = 'https://realestate.co.logan.oh.us/api/Document/PublicRecordsExcel.zip'
-
-# %%
 morpcParcels.download_and_unzip_archive(url=os.path.dirname(cama_url), filename=os.path.basename(cama_url), temp_dir='./logan_data/cama/', keep_zip=True)
 
+# %% [markdown]
+# # Load data
+
 # %%
-# Export all columns samples
-#all_columns = []
-#for file in os.listdir('./logan_data/cama/'):
-#    if file.endswith('.xlsx'):
-#        table = pd.read_excel(os.path.join('./logan_data/cama/', file))
-#        table.columns = [f"{x}_{file}" for x in table.columns.values]
-#        all_columns.append(morpcParcels.sample_columns_from_df(table))
-#all_columns = pd.concat(all_columns)
-#all_columns.to_csv('./logan_data/all_cama_columns.csv')
+parcels = parcels[['Parcel_N_1', 'Land_Use_C', 'Acres', 'geometry']]
 
 # %%
 build = morpcParcels.extract_fields_from_cama('./logan_data/cama/PublicRecordsExcel.zip', filename='Parcel Building.xlsx', columns=['Parcel Number U', 'Card', 'Year Built', 'Year Effective'])
@@ -100,12 +91,6 @@ cama = pd.concat([build, dwell])
 
 # %%
 cama = cama.groupby('Parcel Number U').agg({'Year Effective':'max'}).reset_index()
-
-# %% [markdown]
-# # Get addresses and calculate units
-
-# %%
-addr_url = 'https://services9.arcgis.com/mFxO7gBbusFBQ5o9/arcgis/rest/services/Logan_County_Addresses/FeatureServer/0'
 
 # %%
 addr = morpcParcels.gdf_from_services(addr_url)
@@ -141,27 +126,8 @@ parcels = parcels.loc[~parcels['geometry'].isna()]
 parcels['x'] = [point.x for point in parcels['geometry']]
 parcels['y'] = [point.y for point in parcels['geometry']]
 
-
 # %%
-def get_housing_units_field(table, acres_name, luc_name):
-    table[acres_name] = [pd.to_numeric(x) for x in table[acres_name]]
-    table[luc_name] = [str(x) for x in table[luc_name]]
-
-    table.loc[(table[acres_name] > .75 ) & (table[luc_name].str.startswith('51')), 'housing_unit_type'] = "SF-LL"
-    table.loc[(table[acres_name] <= .75) & (table[luc_name].str.startswith('51')), 'housing_unit_type'] = "SF-SL"
-    table.loc[table[luc_name].str.startswith(('52', '53', '54', '55')), 'housing_unit_type'] = "SF-A"
-    table.loc[table[luc_name].str.startswith('4'), 'housing_unit_type'] = "MF"
-    return(table)
-
-
-# %%
-parcels = get_housing_units_field(parcels, 'Acres', 'Land_Use_C')
-
-# %%
-parcels.crs
-
-# %%
-parcels
+parcels = morpcParcels.get_housing_unit_type_field(parcels, 'Acres', 'Land_Use_C')
 
 # %%
 (plotnine.ggplot()

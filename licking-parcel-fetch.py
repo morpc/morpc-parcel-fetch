@@ -203,6 +203,9 @@ parcels['COUNTY'] = 'Licking'
 
 
 # %%
+parcels = parcels.reset_index().rename(columns={'PARCEL':'OBJECTID'})
+
+# %%
 parcels = parcels.loc[(parcels['TYPE']!='nan')&(~parcels['YRBUILT'].isna())&(~parcels['UNITS'].isna())].sort_values('UNITS', ascending=False)
 
 # %%
@@ -221,6 +224,9 @@ parcels = parcels.loc[(parcels['TYPE']!='nan')&(~parcels['YRBUILT'].isna())&(~pa
 )
 
 # %%
+parcels
+
+# %%
 parcels[['OBJECTID', 'CLASS', 'ACRES', 'YRBUILT', 'UNITS', 'TYPE', 'COUNTY', 'PLACECOMBO', 'x', 'y', 'geometry']]
 if not os.path.exists('./output_data/'):
     os.makedirs('./output_data/')
@@ -228,3 +234,5 @@ if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
     parcels.to_file('./output_data/hu_type_from_parcels.gpkg')
 else:
     parcels.to_file('./output_data/hu_type_from_parcels.gpkg', mode='a')
+
+# %%

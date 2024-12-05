@@ -41,16 +41,11 @@ STANDARD_GEO_VINTAGE = 2023
 JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH = "../morpc-censustiger-standardize/output_data/morpc-standardgeos-census-{}.gpkg".format(STANDARD_GEO_VINTAGE)
 JURISDICTIONS_PARTS_FEATURECLASS_LAYER = "JURIS-COUNTY"
 print("Data: {0}, layer={1}".format(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, JURISDICTIONS_PARTS_FEATURECLASS_LAYER))
-
-# %%
 INPUT_DIR = "./input_data"
-
 inputDir = os.path.normpath(INPUT_DIR)
 if not os.path.exists(inputDir):
     os.makedirs(inputDir)
-
 jurisdictionsPartsRaw = morpc.load_spatial_data(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, layerName=JURISDICTIONS_PARTS_FEATURECLASS_LAYER, archiveDir=inputDir)
-jurisdictionsPartsRaw = jurisdictionsPartsRaw.to_crs('epsg:3735')
 
 # %%
 parcel_url = "https://engineer.co.morrow.oh.us/arcgis/rest/services/Morrow_ParcelRelated_new/MapServer/0"

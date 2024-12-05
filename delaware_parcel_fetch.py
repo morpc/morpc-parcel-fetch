@@ -107,10 +107,12 @@ parcels = parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']].to_crs
 
 # %%
 parcels['COUNTY'] = 'Delaware'
-parcels = parcels.reset_index()
 
 # %%
 parcels = parcels.loc[(parcels['TYPE']!='nan')&(~parcels['YRBUILT'].isna())&(~parcels['UNITS'].isna())].sort_values('UNITS', ascending=False)
+
+# %%
+parcels = parcels.reset_index()
 
 # %%
 (plotnine.ggplot()
@@ -135,3 +137,5 @@ if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
     parcels.to_file('./output_data/hu_type_from_parcels.gpkg')
 else:
     parcels.to_file('./output_data/hu_type_from_parcels.gpkg', mode='a')
+
+# %%
