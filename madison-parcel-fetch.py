@@ -38,12 +38,6 @@ sys.path.append(os.path.normpath('../morpc-parcel-fetch/'))
 import morpcParcels
 
 # %%
-morpcParcels.download_and_unzip_archive(url = "http://ftp1.co.madison.oh.us:81/Auditor/Data/GIS/", filename='parcels.zip', temp_dir='./input_data/madison_data/parcels/')
-
-# %%
-morpcParcels.download_and_unzip_archive(url='http://madison-public.issg.io/api/Document/', filename='PublicRecordsExtract.zip', temp_dir='./input_data/madison_data/cama/', keep_zip=True)
-
-# %%
 STANDARD_GEO_VINTAGE = 2023
 JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH = "../morpc-censustiger-standardize/output_data/morpc-standardgeos-census-{}.gpkg".format(STANDARD_GEO_VINTAGE)
 JURISDICTIONS_PARTS_FEATURECLASS_LAYER = "JURIS-COUNTY"
@@ -53,10 +47,15 @@ inputDir = os.path.normpath(INPUT_DIR)
 if not os.path.exists(inputDir):
     os.makedirs(inputDir)
 jurisdictionsPartsRaw = morpc.load_spatial_data(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, layerName=JURISDICTIONS_PARTS_FEATURECLASS_LAYER, archiveDir=inputDir)
-jurisdictionsPartsRaw = jurisdictionsPartsRaw.to_crs('epsg:3735')
 
 # %%
-madison_parcels_raw = gpd.read_file('./input_data/madison_data/parcels/parcels.shp')
+morpcParcels.download_and_unzip_archive(url = "http://ftp1.co.madison.oh.us:81/Auditor/Data/GIS/", filename='parcels.zip', temp_dir='./input_data/madison_data/parcels/')
+
+# %%
+morpcParcels.download_and_unzip_archive(url='http://madison-public.issg.io/api/Document/', filename='PublicRecordsExtract.zip', temp_dir='./input_data/madison_data/cama/', keep_zip=True)
+
+# %%
+parcels_raw = gpd.read_file('./input_data/madison_data/parcels/parcels.shp')
 
 # %%
 build = morpcParcels.extract_fields_from_cama(zip_path='./input_data/madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Building.xml', columns=['Parcel_Number', 'Card', 'Year_Built', 'Year_Effective']).set_index('Parcel_Number')
@@ -64,6 +63,9 @@ dwell = morpcParcels.extract_fields_from_cama(zip_path='./input_data/madison_dat
 yrbuilt = pd.concat([build, dwell]).dropna()
 yrbuilt['Year_Effective'] = [x if y==None else y for x, y in zip(yrbuilt['Year_Built'], yrbuilt['Year_Effective'])]
 yrbuilt = yrbuilt.groupby('Parcel_Number').agg({'Year_Effective':'max'})
+
+# %%
+morpcParcels.extract_fields_from_cama(zip_path='./input_data/madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Dwelling.xml').set_index('Parcel_Number')
 
 # %%
 units_build = morpcParcels.extract_fields_from_cama(zip_path='./input_data/madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Building Composite.xml', columns=['Parcel_Number', 'Units']).set_index('Parcel_Number')
@@ -81,16 +83,15 @@ value = morpcParcels.extract_fields_from_cama('./input_data/madison_data/cama/Pu
 land_use = value[['Parcel_Number', 'Land_Use_Code']].set_index('Parcel_Number')
 
 # %%
-parcels = madison_parcels_raw[['TAXPIN', 'geometry']].set_index('TAXPIN')
+parcels = parcels_raw[['TAXPIN', 'geometry']].set_index('TAXPIN')
 
 # %%
 parcels = parcels.join([land_use, yrbuilt, acres, units]).drop_duplicates()
 
 # %%
+parcels = parcels.to_crs('3735')
 parcels['geometry'] = parcels['geometry'].centroid
 parcels = parcels.loc[~parcels['geometry'].isna()]
-
-# %%
 parcels['x'] = [point.x for point in parcels['geometry']]
 parcels['y'] = [point.y for point in parcels['geometry']]
 
@@ -106,7 +107,13 @@ parcels = parcels.reset_index().rename(columns = {
     'Units':'UNITS'})
 
 # %%
-parcels = morpcParcels.get_housing_unit_type_field(parcels, 'ACRES', 'LUC')
+parcels = morpcParcels.get_housing_unit_type_field(parcels, 'ACRES', 'CLASS')
+
+# %%
+parcels['COUNTY'] = 'Madison'
+
+# %%
+parcels = parcels.loc[(parcels['TYPE']!='nan')&(~parcels['YRBUILT'].isna())&(~parcels['UNITS'].isna())].sort_values('UNITS', ascending=False)
 
 # %%
 (plotnine.ggplot()
@@ -124,10 +131,6 @@ parcels = morpcParcels.get_housing_unit_type_field(parcels, 'ACRES', 'LUC')
 )
 
 # %%
-parcels = parcels.to_crs('3735')
-parcels['COUNTY'] = 'Madison'
-
-# %%
 parcels[['OBJECTID', 'CLASS', 'ACRES', 'YRBUILT', 'UNITS', 'TYPE', 'COUNTY', 'PLACECOMBO', 'x', 'y', 'geometry']]
 if not os.path.exists('./output_data/'):
     os.makedirs('./output_data/')
@@ -135,5 +138,3 @@ if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
     parcels.to_file('./output_data/hu_type_from_parcels.gpkg')
 else:
     parcels.to_file('./output_data/hu_type_from_parcels.gpkg', mode='a')
-
-# %%

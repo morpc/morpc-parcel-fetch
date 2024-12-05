@@ -97,21 +97,24 @@ parcels = parcels.groupby('OBJECTID').agg({
 parcels = morpcParcels.get_housing_unit_type_field(parcels, 'ACRES', 'CLASS')
 
 # %%
-parcels = gpd.GeoDataFrame(parcels, geometry='geometry', crs='NAD83').to_crs('epsg:3734')
-
-# %%
+parcels = gpd.GeoDataFrame(parcels, geometry='geometry', crs='NAD83').to_crs('epsg:3735')
 parcels['geometry'] = parcels['geometry'].centroid
-
-# %%
 parcels['x'] = [point.x for point in parcels['geometry']]
 parcels['y'] = [point.y for point in parcels['geometry']]
 
 # %%
-parcels = parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']].to_crs('3734')).drop(columns='index_right')
+parcels = parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']].to_crs('3735')).drop(columns='index_right')
+
+# %%
+parcels['COUNTY'] = 'Delaware'
+parcels = parcels.reset_index()
+
+# %%
+parcels = parcels.loc[(parcels['TYPE']!='nan')&(~parcels['YRBUILT'].isna())&(~parcels['UNITS'].isna())].sort_values('UNITS', ascending=False)
 
 # %%
 (plotnine.ggplot()
-    + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Delaware'].to_crs('epsg:3734'), fill="None", color='black')
+    + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Delaware'].to_crs('epsg:3735'), fill="None", color='black')
     + plotnine.geom_jitter(parcels, plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'TYPE'), color="None")
     + plotnine.theme(
         panel_background=plotnine.element_blank(),
@@ -123,14 +126,6 @@ parcels = parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']].to_crs
    + plotnine.scale_size_radius(range=(.2,5), breaks = (1,50, 100, 250, 400))
  + plotnine.guides(size=plotnine.guide_legend(override_aes={'color':'black'}))
 )
-
-# %%
-parcels = parcels.to_crs('epsg:3735')
-parcels['COUNTY'] = 'Delaware'
-parcels = parcels.reset_index()
-
-# %%
-parcels.columns.values
 
 # %%
 parcels[['OBJECTID', 'CLASS', 'ACRES', 'YRBUILT', 'UNITS', 'TYPE', 'COUNTY', 'PLACECOMBO', 'x', 'y', 'geometry']]

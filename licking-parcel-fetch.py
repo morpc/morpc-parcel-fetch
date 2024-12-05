@@ -199,7 +199,11 @@ parcels['y'] = [point.y for point in parcels['geometry']]
 parcels = parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']]).drop(columns='index_right')
 
 # %%
-parcels = parcels.reset_index().rename(columns={'PARCEL':'OBJECTID'})
+parcels['COUNTY'] = 'Licking'
+
+
+# %%
+parcels = parcels.loc[(parcels['TYPE']!='nan')&(~parcels['YRBUILT'].isna())&(~parcels['UNITS'].isna())].sort_values('UNITS', ascending=False)
 
 # %%
 (plotnine.ggplot()
@@ -217,10 +221,6 @@ parcels = parcels.reset_index().rename(columns={'PARCEL':'OBJECTID'})
 )
 
 # %%
-parcels['COUNTY'] = 'Licking'
-
-
-# %%
 parcels[['OBJECTID', 'CLASS', 'ACRES', 'YRBUILT', 'UNITS', 'TYPE', 'COUNTY', 'PLACECOMBO', 'x', 'y', 'geometry']]
 if not os.path.exists('./output_data/'):
     os.makedirs('./output_data/')
@@ -228,5 +228,3 @@ if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
     parcels.to_file('./output_data/hu_type_from_parcels.gpkg')
 else:
     parcels.to_file('./output_data/hu_type_from_parcels.gpkg', mode='a')
-
-# %%

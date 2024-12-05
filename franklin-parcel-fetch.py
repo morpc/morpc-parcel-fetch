@@ -147,20 +147,20 @@ dwelling = (dwelling[['PARCEL ID', 'CARD', 'YRBLT']]
 # ## Parcel land use codes and acerage
 
 # %%
-parcel_raw = pl.read_excel(os.path.join('./input_data/franklin_data/cama/accounting/Parcel.xlsx')).to_pandas()
-parcel = parcel_raw[['PARCEL ID', 'LUC', 'GisAcres']].copy()
+cama_raw = pl.read_excel(os.path.join('./input_data/franklin_data/cama/accounting/Parcel.xlsx')).to_pandas()
+cama = cama_raw[['PARCEL ID', 'LUC', 'GisAcres']].copy()
 
 # %%
-parcel = parcel.set_index('PARCEL ID').join(pd.concat([dwelling, build]).set_index('PARCEL ID'))
+cama = cama.set_index('PARCEL ID').join(pd.concat([dwelling, build]).set_index('PARCEL ID'))
 
 # %%
-parcel = parcel.join(parcels[['PARCELID', 'geometry']].set_index('PARCELID'))
+parcels = cama.join(parcels[['PARCELID', 'geometry']].set_index('PARCELID'))
 
 # %%
-parcel = parcel.join(units)
+parcels = parcels.join(units)
 
 # %%
-parcels = morpcParcels.get_housing_unit_type_field(parcel, 'GisAcres', 'LUC')
+parcels = morpcParcels.get_housing_unit_type_field(parcels, 'GisAcres', 'LUC')
 
 # %%
 parcels = gpd.GeoDataFrame(parcels, geometry='geometry').to_crs('epsg:3735')
@@ -185,6 +185,12 @@ parcels = parcels.rename(columns={
 parcels = parcels.sjoin(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=="Franklin"][['PLACECOMBO', 'geometry']]).drop(columns='index_right')
 
 # %%
+parcels['COUNTY'] = 'Franklin'
+
+# %%
+parcels = parcels.loc[(parcels['TYPE']!='nan')&(~parcels['YRBUILT'].isna())&(~parcels['UNITS'].isna())].sort_values('UNITS', ascending=False)
+
+# %%
 (plotnine.ggplot()
     + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Franklin'].to_crs(parcels.crs), fill="None", color='black')
     + plotnine.geom_jitter(parcels, plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'TYPE'), color="None")
@@ -198,13 +204,6 @@ parcels = parcels.sjoin(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY'
    + plotnine.scale_size_radius(range=(.2,5), breaks = (1,50, 100, 250, 500))
    + plotnine.guides(size=plotnine.guide_legend(override_aes={'color':'black'}))
 )
-
-# %%
-parcels = parcels.to_crs('3735')
-parcels['COUNTY'] = 'Franklin'
-
-# %%
-parcels.columns.values
 
 # %%
 parcels[['OBJECTID', 'CLASS', 'ACRES', 'YRBUILT', 'UNITS', 'TYPE', 'COUNTY', 'PLACECOMBO', 'x', 'y', 'geometry']]

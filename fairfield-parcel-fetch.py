@@ -37,12 +37,6 @@ sys.path.append(os.path.normpath('../morpc-parcel-fetch/'))
 import morpcParcels
 
 # %%
-morpcParcels.download_and_unzip_archive(url='https://www.co.fairfield.oh.us/gis/Fairfield_Data/', filename='parcels.zip', temp_dir='./input_data/fairfield_data/parcels/')
-
-# %%
-morpcParcels.download_and_unzip_archive(url='https://www.co.fairfield.oh.us/gis/Fairfield_Data/', filename='addresses.zip', temp_dir='./input_data/fairfield_data/addr/')
-
-# %%
 STANDARD_GEO_VINTAGE = 2023
 JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH = "../morpc-censustiger-standardize/output_data/morpc-standardgeos-census-{}.gpkg".format(STANDARD_GEO_VINTAGE)
 JURISDICTIONS_PARTS_FEATURECLASS_LAYER = "JURIS-COUNTY"
@@ -54,14 +48,20 @@ if not os.path.exists(inputDir):
 jurisdictionsPartsRaw = morpc.load_spatial_data(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, layerName=JURISDICTIONS_PARTS_FEATURECLASS_LAYER, archiveDir=inputDir)
 
 # %%
+morpcParcels.download_and_unzip_archive(url='https://www.co.fairfield.oh.us/gis/Fairfield_Data/', filename='parcels.zip', temp_dir='./input_data/fairfield_data/parcels/')
+
+# %%
+morpcParcels.download_and_unzip_archive(url='https://www.co.fairfield.oh.us/gis/Fairfield_Data/', filename='addresses.zip', temp_dir='./input_data/fairfield_data/addr/')
+
+# %%
 parcels_raw = pyogrio.read_dataframe('./input_data/fairfield_data/parcels/parcels.shp')
+
+# %%
+addr_raw = pyogrio.read_dataframe('./input_data/fairfield_data/addr/addresses.shp')
 
 # %%
 parcels = parcels_raw[['PARID', 'ACRES', 'LUC', 'YRBLT', 'geometry']]
 parcels = parcels.rename(columns = {'YRBLT':'YRBUILT'})
-
-# %%
-addr_raw = pyogrio.read_dataframe('./input_data/fairfield_data/addr/addresses.shp')
 
 # %%
 units = (addr_raw[['LSN', 'geometry']].sjoin(parcels[['PARID', 'geometry']])
@@ -75,6 +75,7 @@ units = (addr_raw[['LSN', 'geometry']].sjoin(parcels[['PARID', 'geometry']])
 parcels = parcels.set_index('PARID').join(units)
 
 # %%
+parcels = parcels.to_crs('3735')
 parcels['geometry'] = parcels['geometry'].centroid
 parcels['x'] = [point.x for point in parcels['geometry']]
 parcels['y'] = [point.y for point in parcels['geometry']]
@@ -96,6 +97,9 @@ parcels = parcels.reset_index().rename(columns = {
 parcels['COUNTY'] = 'Fairfield'
 
 # %%
+parcels = parcels.loc[(parcels['TYPE']!='nan')&(~parcels['YRBUILT'].isna())&(~parcels['UNITS'].isna())].sort_values('UNITS', ascending=False)
+
+# %%
 (plotnine.ggplot()
     + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Fairfield'], fill="None", color='black')
     + plotnine.geom_jitter(parcels.loc[parcels['TYPE']!='nan'], plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'TYPE'), color="None")
@@ -109,9 +113,6 @@ parcels['COUNTY'] = 'Fairfield'
    + plotnine.scale_size_radius(range=(.2,5), breaks = (1,50, 100, 250, 400))
  + plotnine.guides(size=plotnine.guide_legend(override_aes={'color':'black'}))
 )
-
-# %%
-parcels = parcels.to_crs('3735')
 
 # %%
 parcels[['OBJECTID', 'CLASS', 'ACRES', 'YRBUILT', 'UNITS', 'TYPE', 'COUNTY', 'PLACECOMBO', 'x', 'y', 'geometry']]
