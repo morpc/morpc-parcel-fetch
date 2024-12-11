@@ -58,26 +58,13 @@ parcels.to_file("./input_data/delaware_data/parcels/delaware_parcels.shp")
 # # Read Data
 
 # %%
-STANDARD_GEO_VINTAGE = 2023
-JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH = "../morpc-censustiger-standardize/output_data/morpc-standardgeos-census-{}.gpkg".format(STANDARD_GEO_VINTAGE)
-JURISDICTIONS_PARTS_FEATURECLASS_LAYER = "JURIS-COUNTY"
-INPUT_DIR = "./input_data"
-print("Data: {0}, layer={1}".format(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, JURISDICTIONS_PARTS_FEATURECLASS_LAYER))
-
-inputDir = os.path.normpath(INPUT_DIR)
-if not os.path.exists(inputDir):
-    os.makedirs(inputDir)
-
-jurisdictionsPartsRaw = morpc.load_spatial_data(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, layerName=JURISDICTIONS_PARTS_FEATURECLASS_LAYER, archiveDir=inputDir)
-
-# %%
 parcels = pyogrio.read_dataframe("./input_data/delaware_data/parcels/delaware_parcels.shp")
 
 # %%
 addr = pyogrio.read_dataframe("./input_data/delaware_data/addr/delaware_addr.shp")
 
 # %%
-parcels = parcels[['OBJECTID', 'CLASS', 'YRBUILT', 'ACRES', 'geometry']].sjoin(addr[['LSN', 'geometry']]).drop(columns='index_right')
+units = parcels[['OBJECTID', 'geometry']].sjoin(addr[['LSN', 'geometry']]).drop(columns='index_right').groupby('OBJECTID').agg({'LSN':'count'}).rename(columns={'LSN':'UNITS'})
 
 # %%
 parcels['CLASS'] = [str(x) for x in parcels['CLASS']]
@@ -89,53 +76,19 @@ parcels = parcels.groupby('OBJECTID').agg({
     'CLASS':'first',
     'YRBUILT':'max',
     'ACRES':'max',
-    'LSN':'count',
     'geometry':'first'
-}).rename(columns = {'LSN':'UNITS'})
+})
 
 # %%
-parcels = morpcParcels.get_housing_unit_type_field(parcels, 'ACRES', 'CLASS')
+parcels = parcels.join(units).reset_index()
 
 # %%
-parcels = gpd.GeoDataFrame(parcels, geometry='geometry', crs='NAD83').to_crs('epsg:3735')
-parcels['geometry'] = parcels['geometry'].centroid
-parcels['x'] = [point.x for point in parcels['geometry']]
-parcels['y'] = [point.y for point in parcels['geometry']]
+parcels = gpd.GeoDataFrame(parcels, geometry='geometry', crs='NAD83')
 
 # %%
-parcels = parcels.sjoin(jurisdictionsPartsRaw[['PLACECOMBO', 'geometry']].to_crs('3735')).drop(columns='index_right')
+parcels = parcels.to_crs('epsg:3735')
 
 # %%
-parcels['COUNTY'] = 'Delaware'
-
-# %%
-parcels = parcels.loc[(parcels['TYPE']!='nan')&(~parcels['YRBUILT'].isna())&(~parcels['UNITS'].isna())].sort_values('UNITS', ascending=False)
-
-# %%
-parcels = parcels.reset_index()
-
-# %%
-(plotnine.ggplot()
-    + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Delaware'].to_crs('epsg:3735'), fill="None", color='black')
-    + plotnine.geom_jitter(parcels, plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'TYPE'), color="None")
-    + plotnine.theme(
-        panel_background=plotnine.element_blank(),
-        axis_text=plotnine.element_blank(),
-        axis_ticks=plotnine.element_blank(),
-        axis_title=plotnine.element_blank(),
-        figure_size=(12,10)
-    )
-   + plotnine.scale_size_radius(range=(.2,5), breaks = (1,50, 100, 250, 400))
- + plotnine.guides(size=plotnine.guide_legend(override_aes={'color':'black'}))
-)
-
-# %%
-parcels[['OBJECTID', 'CLASS', 'ACRES', 'YRBUILT', 'UNITS', 'TYPE', 'COUNTY', 'PLACECOMBO', 'x', 'y', 'geometry']]
-if not os.path.exists('./output_data/'):
-    os.makedirs('./output_data/')
-if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
-    parcels.to_file('./output_data/hu_type_from_parcels.gpkg')
-else:
-    parcels.to_file('./output_data/hu_type_from_parcels.gpkg', mode='a')
+parcels.to_file('./output_data/delaware_parcels.gpkg')
 
 # %%

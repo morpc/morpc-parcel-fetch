@@ -13,9 +13,6 @@
 #     name: python3
 # ---
 
-# %% [markdown]
-# # Franklin Sub-county Units from Parcels
-
 # %%
 import os
 import requests
@@ -85,54 +82,43 @@ morpcParcels.download_and_unzip_archive(url=appraisal_url, filename='Excel.zip',
 morpcParcels.download_and_unzip_archive(url=accounting_url, filename='Excel.zip', temp_dir='./input_data/franklin_data/cama/accounting/', keep_zip=True)
 
 # %% [markdown]
-# # Read Data
-
-# %%
-STANDARD_GEO_VINTAGE = 2023
-JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH = "../morpc-censustiger-standardize/output_data/morpc-standardgeos-census-{}.gpkg".format(STANDARD_GEO_VINTAGE)
-JURISDICTIONS_PARTS_FEATURECLASS_LAYER = "JURIS-COUNTY"
-print("Data: {0}, layer={1}".format(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, JURISDICTIONS_PARTS_FEATURECLASS_LAYER))
-INPUT_DIR = "./input_data/"
-inputDir = os.path.normpath(INPUT_DIR)
-if not os.path.exists(inputDir):
-    os.makedirs(inputDir)
-jurisdictionsPartsRaw = morpc.load_spatial_data(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, layerName=JURISDICTIONS_PARTS_FEATURECLASS_LAYER, archiveDir=inputDir)
-
-# %% [markdown]
 # ## Parcel Geometry
 
 # %%
-parcels = pyogrio.read_dataframe('./input_data/franklin_data/Output/FCA_SDE_Web_Prod.gdb/', layer='TaxParcel_CondoUnitStack_LGIM')
+parcels_raw = pyogrio.read_dataframe('./input_data/franklin_data/Output/FCA_SDE_Web_Prod.gdb/', layer='TaxParcel_CondoUnitStack_LGIM')
 
 # %%
-parcels = parcels[['PARCELID', 'CLASSCD', 'geometry']]
+parcels = parcels_raw[['PARCELID', 'CLASSCD', 'ACRES', 'geometry']]
 
 # %%
 parcels['PARCELID'] = [x + '-00' for x in parcels['PARCELID']]
+
+# %%
+parcels = parcels.loc[~parcels['PARCELID'].str.startswith(('VNP', 'OUT', 'W', 'w', 'R', 'r'))]
+
+# %%
+parcels = parcels.dissolve(by='PARCELID')
 
 # %% [markdown]
 # ## Unit counts from address
 
 # %%
-addr = pyogrio.read_dataframe('./input_data/franklin_data/Output/FCA_SDE_Web_Prod.gdb/', layer='LBRS_AddressPoints')
+addr_raw = pyogrio.read_dataframe('./input_data/franklin_data/Output/FCA_SDE_Web_Prod.gdb/', layer='LBRS_AddressPoints')
 
 # %%
-units = parcels.sjoin(addr[['LSN', 'geometry']]).groupby('PARCELID').agg({'LSN':'count'}).rename(columns={'LSN':'units'})
+units = parcels.sjoin(addr_raw[['LSN', 'geometry']]).groupby('PARCELID').agg({'LSN':'count'}).rename(columns={'LSN':'units'})
 
 # %% [markdown]
-# ## Building card number for commercial parcels
+# ## Year Built from CAMA
 
 # %%
-build_raw = pl.read_excel(os.path.join('./input_data/franklin_data/cama/appraisal/Build.xlsx')).to_pandas()
-build = build_raw[['PARCEL ID', 'CARD', 'YRBLT']].copy()
-build = (build[['PARCEL ID', 'CARD', 'YRBLT']]
+building_raw = pl.read_excel(os.path.join('./input_data/franklin_data/cama/appraisal/Build.xlsx')).to_pandas()
+building = building_raw[['PARCEL ID', 'CARD', 'YRBLT']].copy()
+building = (building[['PARCEL ID', 'CARD', 'YRBLT']]
  .drop_duplicates()
  .groupby(['PARCEL ID']).agg({
      'YRBLT':'max'
  }).reset_index())
-
-# %% [markdown]
-# ## Dwelling card number and living units for dwellings. 
 
 # %%
 dwelling_raw = pl.read_excel(os.path.join('./input_data/franklin_data/cama/appraisal/Dwelling.xlsx')).to_pandas()
@@ -143,75 +129,30 @@ dwelling = (dwelling[['PARCEL ID', 'CARD', 'YRBLT']]
      'YRBLT':'max'
  }).reset_index())
 
+# %%
+yrbuilt = pd.concat([dwelling, building]).groupby('PARCEL ID').agg({'YRBLT':'max'}).reset_index()
+
 # %% [markdown]
-# ## Parcel land use codes and acerage
-
-# %%
-cama_raw = pl.read_excel(os.path.join('./input_data/franklin_data/cama/accounting/Parcel.xlsx')).to_pandas()
-cama = cama_raw[['PARCEL ID', 'LUC', 'GisAcres']].copy()
-
-# %%
-cama = cama.set_index('PARCEL ID').join(pd.concat([dwelling, build]).set_index('PARCEL ID'))
-
-# %%
-parcels = cama.join(parcels[['PARCELID', 'geometry']].set_index('PARCELID'))
+# ## Join Units and yrbuilt
 
 # %%
 parcels = parcels.join(units)
 
 # %%
-parcels = morpcParcels.get_housing_unit_type_field(parcels, 'GisAcres', 'LUC')
-
-# %%
-parcels = gpd.GeoDataFrame(parcels, geometry='geometry').to_crs('epsg:3735')
-parcels['geometry'] = parcels['geometry'].centroid
-parcels = parcels.loc[~parcels['geometry'].isna()]
-parcels['x'] = [point.x for point in parcels['geometry']]
-parcels['y'] = [point.y for point in parcels['geometry']]
-
-# %%
-parcels = parcels.reset_index()
+parcels = parcels.join(yrbuilt.set_index('PARCEL ID')).reset_index()
 
 # %%
 parcels = parcels.rename(columns={
-    'index':'OBJECTID',
-    'GisAcres':'ACRES',
+    'PARCELID':'OBJECTID',
     'YRBLT':'YRBUILT',
-    'LUC':'CLASS',
+    'CLASSCD':'CLASS',
     'units':'UNITS'
 })
 
 # %%
-parcels = parcels.sjoin(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=="Franklin"][['PLACECOMBO', 'geometry']]).drop(columns='index_right')
+parcels = parcels.to_crs('epsg:3735')
 
 # %%
-parcels['COUNTY'] = 'Franklin'
-
-# %%
-parcels = parcels.loc[(parcels['TYPE']!='nan')&(~parcels['YRBUILT'].isna())&(~parcels['UNITS'].isna())].sort_values('UNITS', ascending=False)
-
-# %%
-(plotnine.ggplot()
-    + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY']=='Franklin'].to_crs(parcels.crs), fill="None", color='black')
-    + plotnine.geom_jitter(parcels, plotnine.aes(x='x', y='y', size = 'UNITS', fill = 'TYPE'), color="None")
-    + plotnine.theme(
-        panel_background=plotnine.element_blank(),
-        axis_text=plotnine.element_blank(),
-        axis_ticks=plotnine.element_blank(),
-        axis_title=plotnine.element_blank(),
-        figure_size=(12,10)
-    )
-   + plotnine.scale_size_radius(range=(.2,5), breaks = (1,50, 100, 250, 500))
-   + plotnine.guides(size=plotnine.guide_legend(override_aes={'color':'black'}))
-)
-
-# %%
-parcels[['OBJECTID', 'CLASS', 'ACRES', 'YRBUILT', 'UNITS', 'TYPE', 'COUNTY', 'PLACECOMBO', 'x', 'y', 'geometry']]
-if not os.path.exists('./output_data/'):
-    os.makedirs('./output_data/')
-if not os.path.exists('./output_data/hu_type_from_parcels.gpkg'):
-    parcels.to_file('./output_data/hu_type_from_parcels.gpkg')
-else:
-    parcels.to_file('./output_data/hu_type_from_parcels.gpkg', mode='a')
+parcels.to_file('./output_data/franklin_parcels.gpkg')
 
 # %%
