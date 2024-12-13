@@ -153,7 +153,7 @@ addr_raw = gpd.read_file('./input_data/licking_data/addr/licking_addr.shp')
 addr_raw = addr_raw.loc[addr_raw.is_valid]
 
 # %%
-parcels = parcels_raw[['PARCEL', 'LUC', 'GISACRES', 'YEARBUILT', 'geometry']]
+parcels = parcels_raw[['PARCEL', 'LUC', 'GISACRES', 'YEARBUILT', 'NETTOTVAL', 'geometry']]
 
 # %%
 addr = addr_raw[['LSN', 'geometry']]
@@ -169,7 +169,8 @@ parcels = parcels.rename(columns={
     'PARCEL':'OBJECTID',
     'LUC':'CLASS',
     'GISACRES':'ACRES',
-    'YEARBUILT':'YRBUILT'
+    'YEARBUILT':'YRBUILT',
+    'NETTOTVAL':'APPRTOT'
 })
 
 # %%

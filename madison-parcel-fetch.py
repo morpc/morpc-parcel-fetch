@@ -53,6 +53,8 @@ parcels_raw = gpd.read_file('./input_data/madison_data/parcels/parcels.shp')
 addr_raw = gpd.read_file('./input_data/delaware_data/addr/MAD_ADDS.shp')
 
 # %%
+
+# %%
 parcels = parcels_raw[['TAXPIN', 'geometry']].to_crs('epsg:3735')
 
 # %%
@@ -75,10 +77,15 @@ yrbuilt = yrbuilt.groupby('Parcel_Number').agg({'Year_Effective':'max'})
 land_use = morpcParcels.extract_fields_from_cama(zip_path='./input_data/madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Appraisal.xml', columns=['Parcel_Number', 'Land_Use_Code']).set_index('Parcel_Number')
 
 # %%
+appr_tot = morpcParcels.extract_fields_from_cama(zip_path='./input_data/madison_data/cama/PublicRecordsExtract.zip', filename='Parcel Appraisal.xml', columns=['Parcel_Number', 'Total_Appraised_Improvement', 'Total_Appraised_Land']).set_index('Parcel_Number')
+appr_tot['APPRTOT'] = [int(x) + int(y) for x, y in zip(appr_tot['Total_Appraised_Improvement'], appr_tot['Total_Appraised_Land'])]
+appr_tot = appr_tot[['APPRTOT']]
+
+# %%
 acres = morpcParcels.extract_fields_from_cama(zip_path='./input_data/madison_data/cama/PublicRecordsExtract.zip', filename='Parcel.xml', columns=['Parcel_Number', 'Acres']).set_index('Parcel_Number')
 
 # %%
-parcels = parcels.join([land_use, yrbuilt, acres, units]).drop_duplicates().reset_index()
+parcels = parcels.join([land_use, yrbuilt, acres, units, appr_tot]).drop_duplicates().reset_index()
 
 # %%
 parcels = parcels.rename(columns = {
@@ -87,6 +94,9 @@ parcels = parcels.rename(columns = {
     'Land_Use_Code':'CLASS',
     'Year_Effective':'YRBUILT', 
     'Units':'UNITS'})
+
+# %%
+parcels
 
 # %%
 parcels.to_file('./output_data/madison_parcels.gpkg')

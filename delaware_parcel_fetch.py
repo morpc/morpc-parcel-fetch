@@ -40,6 +40,9 @@ import morpcParcels
 # %% [markdown]
 # # Archive Data
 
+# %% [markdown]
+# Download and archive addresses and parcels from AGO services. 
+
 # %%
 addr_url = "https://services2.arcgis.com//ziXVKVy3BiopMCCU//arcgis//rest//services//Address_Point//FeatureServer//0"
 addr = morpcParcels.gdf_from_services(url = addr_url, crs=None).set_crs('NAD83')
@@ -57,11 +60,23 @@ parcels.to_file("./input_data/delaware_data/parcels/delaware_parcels.shp")
 # %% [markdown]
 # # Read Data
 
-# %%
-parcels = pyogrio.read_dataframe("./input_data/delaware_data/parcels/delaware_parcels.shp")
+# %% [markdown]
+# Import all data from archives. 
 
 # %%
-addr = pyogrio.read_dataframe("./input_data/delaware_data/addr/delaware_addr.shp")
+parcels_raw = pyogrio.read_dataframe("./input_data/delaware_data/parcels/delaware_parcels.shp")
+
+# %%
+addr_raw = pyogrio.read_dataframe("./input_data/delaware_data/addr/delaware_addr.shp")
+
+# %% [markdown]
+# Drop unneedded columns.
+
+# %%
+parcels = parcels_raw[['OBJECTID', 'CLASS', 'YRBUILT', 'ACRES', 'TAXABLE_TO', 'geometry']]
+
+# %% [markdown]
+# Get units from spatial join of addresses and parcels
 
 # %%
 units = parcels[['OBJECTID', 'geometry']].sjoin(addr[['LSN', 'geometry']]).drop(columns='index_right').groupby('OBJECTID').agg({'LSN':'count'}).rename(columns={'LSN':'UNITS'})
@@ -70,23 +85,37 @@ units = parcels[['OBJECTID', 'geometry']].sjoin(addr[['LSN', 'geometry']]).drop(
 parcels['CLASS'] = [str(x) for x in parcels['CLASS']]
 parcels['YRBUILT'] = [int(x) for x in parcels['YRBUILT']]
 parcels['ACRES'] = [float(x) for x in parcels['ACRES']]
+parcels['TAXABLE_TO'] = [float(x) for x in parcels['TAXABLE_TO']]
 
 # %%
 parcels = parcels.groupby('OBJECTID').agg({
     'CLASS':'first',
     'YRBUILT':'max',
     'ACRES':'max',
-    'geometry':'first'
-})
+    'geometry':'first',
+    'TAXABLE_TO':'max'
+}).reset_index()
+
+# %% [markdown]
+# Remove identical geometries
 
 # %%
-parcels = parcels.join(units).reset_index()
+parcels = parcels.groupby('geometry').agg({'OBJECTID':'first','CLASS':'first','YRBUILT':'max','ACRES':'max','TAXABLE_TO':'max'}).reset_index()
+
+# %% [markdown]
+# Join units
+
+# %%
+parcels = parcels.set_index('OBJECTID').join(units).reset_index()
 
 # %%
 parcels = gpd.GeoDataFrame(parcels, geometry='geometry', crs='NAD83')
 
 # %%
 parcels = parcels.to_crs('epsg:3735')
+
+# %%
+parcels = parcels.rename(columns={'TAXABLE_TO':'APPRTOT'})
 
 # %%
 parcels.to_file('./output_data/delaware_parcels.gpkg')

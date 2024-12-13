@@ -49,7 +49,7 @@ parcels_raw = parcels_raw.set_crs('NAD83')
 addr_raw = addr_raw.set_crs('NAD83')
 
 # %%
-parcels = parcels_raw[['ParcelNo', 'PARCELCLASS', 'yearBuilt', 'Acreage', 'geometry']].drop_duplicates()
+parcels = parcels_raw[['ParcelNo', 'PARCELCLASS', 'yearBuilt', 'Acreage', 'appraisedTotalValue', 'geometry']].drop_duplicates()
 
 # %%
 parcels = parcels.rename(columns={
@@ -57,18 +57,23 @@ parcels = parcels.rename(columns={
     'Acreage':'ACRES',
     'yearBuilt':'YRBUILT',
     'PARCELCLASS':'CLASS',
+    'appraisedTotalValue':'APPRTOT'
 })
 
 # %%
 parcels['ACRES'] = [pd.to_numeric(x, errors='coerce') for x in parcels['ACRES']]
 parcels['YRBUILT'] = [pd.to_numeric(x, errors='coerce') for x in parcels['YRBUILT']]
 parcels['OBJECTID'] = [str(pd.to_numeric(x, errors='coerce')) for x in parcels['OBJECTID']]
+parcels['APPRTOT'] = [pd.to_numeric(x, errors='coerce') for x in parcels['APPRTOT']]
+
+# %%
+parcels = parcels.groupby('geometry').agg({'OBJECTID':'first','CLASS':'first','YRBUILT':'max', 'ACRES':'max', 'APPRTOT':'max'}).reset_index()
 
 # %%
 parcels = parcels.loc[~parcels['OBJECTID'].isna()]
 
 # %%
-parcels = parcels.groupby(['OBJECTID', 'geometry']).agg({'CLASS':'first', 'ACRES':'max','YRBUILT':'max'}).drop('nan').reset_index()
+parcels = parcels.groupby(['OBJECTID', 'geometry']).agg({'CLASS':'first', 'ACRES':'max','YRBUILT':'max', 'APPRTOT':'max'}).drop('nan').reset_index()
 
 # %%
 parcels = gpd.GeoDataFrame(parcels, geometry='geometry')
@@ -84,5 +89,3 @@ parcels = parcels.to_crs('epsg:3735')
 
 # %%
 parcels.to_file('./output_data/union_parcels.gpkg')
-
-# %%
