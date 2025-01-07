@@ -73,7 +73,7 @@ addr_raw = pyogrio.read_dataframe("./input_data/delaware_data/addr/delaware_addr
 # Drop unneedded columns.
 
 # %%
-parcels = parcels_raw[['OBJECTID', 'CLASS', 'YRBUILT', 'ACRES', 'TAXABLE_TO', 'geometry']]
+parcels = parcels_raw[['OBJECTID', 'CLASS', 'YRBUILT', 'ACRES', 'TAXABLE_TO', 'geometry']].copy()
 
 # %% [markdown]
 # Get units from spatial join of addresses and parcels
@@ -119,5 +119,3 @@ parcels = parcels.rename(columns={'TAXABLE_TO':'APPRTOT'})
 
 # %%
 parcels.to_file('./output_data/delaware_parcels.gpkg')
-
-# %%

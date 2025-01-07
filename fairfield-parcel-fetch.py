@@ -107,5 +107,3 @@ parcels = parcels.to_crs('epsg:3735')
 
 # %%
 parcels.to_file('./output_data/fairfield_parcels.gpkg')
-
-# %%

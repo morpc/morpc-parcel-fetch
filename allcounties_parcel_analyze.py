@@ -22,6 +22,7 @@ import pandas as pd
 import plotnine
 import os
 import pydeck as pdk
+import itables
 
 sys.path.append(os.path.normpath('../morpc-common/'))
 import morpc
@@ -47,6 +48,12 @@ if not os.path.exists(inputDir):
 
 jurisdictionsPartsRaw = morpc.load_spatial_data(JURISDICTIONS_PARTS_FEATURECLASS_FILEPATH, layerName=JURISDICTIONS_PARTS_FEATURECLASS_LAYER, archiveDir=inputDir)
 jurisdictionsPartsRaw = jurisdictionsPartsRaw.to_crs('epsg:3735')
+
+# %%
+all_parcels['UNITS_PER_ACRE'] = all_parcels['UNITS'] / all_parcels['CALCACRES']
+
+# %%
+all_parcels['VALPERACRE'] = [x/y for x, y in zip(pd.to_numeric(all_parcels['APPRTOT'], errors='coerce'), pd.to_numeric(all_parcels['CALCACRES'], errors='coerce'))]
 
 # %%
 type_plot = (plotnine.ggplot()
@@ -93,46 +100,26 @@ type_units_plot
 plotnine.ggsave(type_units_plot, './output_data/type_units_plot.png', dpi=300)
 
 # %%
-all_parcels['VALPERACRE'] = [x/y for x, y in zip(pd.to_numeric(all_parcels['APPRTOT'], errors='coerce'), pd.to_numeric(all_parcels['CALCACRES'], errors='coerce'))]
-
-# %%
-all_parcels
-
-# %%
 all_parcels.loc[all_parcels['YRBUILT']>=2010].groupby(['COUNTY', 'YRBUILT']).agg({'geometry':'count'}).reset_index().pivot(columns='YRBUILT', index='COUNTY')
 
 # %%
-minx = all_parcels['VALPERACRE'].min()
-maxx = all_parcels['VALPERACRE'].max()
-all_parcels['VALPERACRENORM'] = [((x - minx)
-            / (maxx - minx))*200 for x in all_parcels['VALPERACRE']]
-
-# %%
-all_parcels
-
-# %%
-INITIAL_VIEW_STATE = pdk.ViewState(latitude=40, 
-                                   longitude=-90, 
-                                   zoom=9, max_zoom=16, pitch=60, bearing=0)
-
-val_per_acre_layer = pdk.Layer(
-    "GeoJsonLayer",
-    all_parcels[['VALPERACRENORM', 'geometry']].to_json(),
-    opacity=1,
-    filled=True,
-    extruded=True,
-    wireframe=True,
-    pickable=True,
-    get_elevation="VALPERACRE",
-    get_fill_color="VALPERACRE==0?[0,0,0,0]:[VALPERACRE+95, VALPERACRE+95, VALPERACRE+95]",
-    
+plot_table = all_parcels.loc[(~all_parcels['UNITS_PER_ACRE'].isna()) & (all_parcels['COUNTY']=='franklin') & (all_parcels['TYPE']!='nan')]
+units_per_acre_plot = (plotnine.ggplot()
+    + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY'].isin([x.title() for x in plot_table['COUNTY']])].to_crs('epsg:3735'), fill="ivory", color='black', size=.1)
+    + plotnine.geom_map(jurisdictionsPartsRaw.loc[jurisdictionsPartsRaw['COUNTY'].isin([x.title() for x in plot_table['COUNTY']])].dissolve(by='COUNTY').to_crs('epsg:3735'), fill="None", color='black', size=1)
+    + plotnine.geom_map(plot_table, plotnine.aes(fill = 'UNITS_PER_ACRE'), color="None")
+    + plotnine.theme(
+        panel_background=plotnine.element_blank(),
+        axis_text=plotnine.element_blank(),
+        axis_ticks=plotnine.element_blank(),
+        axis_title=plotnine.element_blank(),
+        figure_size=(12,10)
+    )
+   + plotnine.guides(size=plotnine.guide_legend(override_aes={'color':'black'}))
 )
+plotnine.ggsave(units_per_acre_plot, './output_data/units_per_acre_plot.png', dpi=600)
 
-# All together
-# You can customize by adding more layers if you wish
-r = pdk.Deck(layers=[val_per_acre_layer], initial_view_state=INITIAL_VIEW_STATE)
-
-# Exporting as an html file
-r.to_html("output_data/valperacre.html")
+# %%
+(plotnine.ggplot() + plotnine.geom_histogram(plot_table, plotnine.aes(x = 'UNITS_PER_ACRE')))
 
 # %%

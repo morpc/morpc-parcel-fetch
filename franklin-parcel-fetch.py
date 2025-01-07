@@ -108,7 +108,7 @@ parcels_raw = pyogrio.read_dataframe('./input_data/franklin_data/Output/FCA_SDE_
 # Drop unneeded columns. 
 
 # %%
-parcels = parcels_raw[['PARCELID', 'CLASSCD', 'ACRES', 'TOTVALUEBASE', 'geometry']]
+parcels = parcels_raw[['PARCELID', 'CLASSCD', 'ACRES', 'TOTVALUEBASE', 'geometry']].copy()
 
 # %% [markdown]
 # Add -00 to match CAMA data.
@@ -223,7 +223,3 @@ if not os.path.exists('./output_data/'):
 
 # %%
 parcels.to_file('./output_data/franklin_parcels.gpkg')
-
-# %%
-
-# %%
