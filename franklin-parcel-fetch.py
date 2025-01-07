@@ -13,6 +13,12 @@
 #     name: python3
 # ---
 
+# %% [markdown]
+# # Fetch Franklin County Parcel Data
+
+# %% [markdown]
+# ## Introduction
+
 # %%
 import os
 import requests
@@ -28,6 +34,7 @@ import xml.etree.ElementTree as ET
 import random
 import itables
 import plotnine
+import sys
 
 sys.path.append(os.path.normpath('../morpc-common/'))
 import morpc
@@ -43,6 +50,8 @@ import morpcParcels
 # - Get the filename for the GeoDataBase with correct date from "https://apps.franklincountyauditor.com/GIS_Shapefiles/CurrentExtracts"
 # - Create archive folder if not already made.
 # - Download and archive raw copy of file.
+#
+#
 
 # %%
 ftp_url = 'https://apps.franklincountyauditor.com/GIS_Shapefiles/CurrentExtracts/'
@@ -63,7 +72,7 @@ morpcParcels.download_and_unzip_archive(url=ftp_url, filename=filename, temp_dir
 #
 # - Get correct file names for CAMA files.
 # - Create archive folder.
-# - Archive both accountings and appraisal databases. 
+# - Archive appraisal database to get building and dwelling cards, we will extract year built column from these. 
 
 # %%
 init_url = "https://apps.franklincountyauditor.com/Outside_User_Files/"
@@ -79,11 +88,6 @@ for dir in dirs:
     if "Appraisal" in dir:
         appraisal_dirs.append(dir)
 appraisal_url = os.path.join(temp_url, appraisal_dirs[-1])
-accounting_dirs = []
-for dir in dirs:
-    if "Accounting" in dir:
-        accounting_dirs.append(dir)
-accounting_url = os.path.join(temp_url, accounting_dirs[-1])
 
 # %%
 if not os.path.exists('./input_data/franklin_data/cama/'):
@@ -91,9 +95,6 @@ if not os.path.exists('./input_data/franklin_data/cama/'):
 
 # %%
 morpcParcels.download_and_unzip_archive(url=appraisal_url, filename='Excel.zip', temp_dir='./input_data/franklin_data/cama/appraisal/', keep_zip=True)
-
-# %%
-morpcParcels.download_and_unzip_archive(url=accounting_url, filename='Excel.zip', temp_dir='./input_data/franklin_data/cama/accounting/', keep_zip=True)
 
 # %% [markdown]
 # ## Parcel Geometry
@@ -135,7 +136,7 @@ parcels = parcels.dissolve(by='PARCELID')
 parcels = parcels.reset_index().groupby('geometry').agg({'PARCELID':'first', 'CLASSCD':'first', 'ACRES':'max', 'TOTVALUEBASE':'max'}).reset_index().set_index('PARCELID')
 
 # %% [markdown]
-# final parcels geodataframe
+# Convert back to the final parcels geodataframe
 
 # %%
 parcels = gpd.GeoDataFrame(parcels, geometry='geometry')

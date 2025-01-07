@@ -31,6 +31,7 @@ import xml.etree.ElementTree as ET
 import random
 import itables
 import plotnine
+import sys
 
 sys.path.append(os.path.normpath('../morpc-common/'))
 import morpc
